@@ -54,12 +54,19 @@ pub fn (mut c SerialConnection) open() ! {
 	time.sleep(200 * time.millisecond)
 }
 
-pub fn (mut c SerialConnection) write_frame(payload []u8) ! {
+// encode_frame wraps a payload in the inbound framing ('<' + uint16 LE length
+// + payload). Pure function — testable without a serial port.
+pub fn encode_frame(payload []u8) []u8 {
 	mut out := []u8{cap: payload.len + 3}
 	out << fend_in
 	out << u8(payload.len & 0xFF)
 	out << u8((payload.len >> 8) & 0xFF)
 	out << payload
+	return out
+}
+
+pub fn (mut c SerialConnection) write_frame(payload []u8) ! {
+	out := encode_frame(payload)
 	if out.len == 0 {
 		return
 	}

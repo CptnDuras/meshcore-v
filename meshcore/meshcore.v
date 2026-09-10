@@ -94,20 +94,13 @@ pub fn (mut mc MeshCore) wait_for_event(event_type EventType, timeout_ms int) ?E
 
 // send_appstart -> SELF_INFO
 pub fn (mut mc MeshCore) send_appstart(app_name string) !Event {
-	mut p := []u8{}
-	p << cmd_app_start
-	p << u8(3) // app_ver
-	for _ in 0 .. 6 {
-		p << u8(0x20)
-	}
-	p << app_name.bytes()
-	mc.conn.write_frame(p)!
+	mc.conn.write_frame(encode_app_start(app_name))!
 	return mc.wait_for_event(.self_info, 5000) or { return error('timeout waiting for SELF_INFO') }
 }
 
 // send_device_query -> DEVICE_INFO
 pub fn (mut mc MeshCore) send_device_query() !Event {
-	mc.conn.write_frame([cmd_device_query, u8(3)])!
+	mc.conn.write_frame(encode_device_query(3))!
 	return mc.wait_for_event(.device_info, 5000) or {
 		return error('timeout waiting for DEVICE_INFO')
 	}
@@ -116,7 +109,7 @@ pub fn (mut mc MeshCore) send_device_query() !Event {
 // get_msg -> CONTACT_MSG_RECV / CHANNEL_MSG_RECV / NO_MORE_MSGS
 // Mirrors commands.get_msg(): request next queued message.
 pub fn (mut mc MeshCore) get_msg(timeout_ms int) ?Event {
-	mc.conn.write_frame([cmd_sync_next_message]) or { return none }
+	mc.conn.write_frame(encode_sync_next_message()) or { return none }
 	// any of these three may come back; wait for whichever arrives first by
 	// racing three short waits is overkill — instead wait on a small window
 	// and let the reader dispatch; we subscribe to all three via match.
@@ -154,44 +147,15 @@ pub fn (mut mc MeshCore) send_msg(pubkey_prefix_hex string, text string) !Event 
 	if prefix.len < 6 {
 		return error('pubkey prefix must be >= 6 bytes')
 	}
-	mut p := []u8{}
-	p << cmd_send_txt_msg
-	p << u8(0) // txt_type = plain
-	p << u8(0) // attempt
 	ts := u32(time.now().unix())
-	p << u8(ts & 0xFF)
-	p << u8((ts >> 8) & 0xFF)
-	p << u8((ts >> 16) & 0xFF)
-	p << u8((ts >> 24) & 0xFF)
-	for i in 0 .. 6 {
-		p << prefix[i]
-	}
-	mut t := text
-	if t.len > 160 {
-		t = t[..160]
-	}
-	p << t.bytes()
-	mc.conn.write_frame(p)!
+	mc.conn.write_frame(encode_send_txt_msg(prefix, ts, text))!
 	return mc.wait_for_event(.msg_sent, 5000) or { return error('timeout waiting for SENT') }
 }
 
 // send_chan_msg sends a text message to a channel (0 = public).
 pub fn (mut mc MeshCore) send_chan_msg(channel_idx u8, text string) !Event {
-	mut p := []u8{}
-	p << cmd_send_channel_txt_msg
-	p << u8(0) // txt_type
-	p << channel_idx
 	ts := u32(time.now().unix())
-	p << u8(ts & 0xFF)
-	p << u8((ts >> 8) & 0xFF)
-	p << u8((ts >> 16) & 0xFF)
-	p << u8((ts >> 24) & 0xFF)
-	mut t := text
-	if t.len > 150 {
-		t = t[..150]
-	}
-	p << t.bytes()
-	mc.conn.write_frame(p)!
+	mc.conn.write_frame(encode_send_channel_txt_msg(channel_idx, ts, text))!
 	// channel send responds with OK (per spec)
 	return mc.wait_for_event(.ok, 5000) or { return error('timeout waiting for OK') }
 }
