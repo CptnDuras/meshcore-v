@@ -19,7 +19,7 @@ who has used that library.
 ## Install
 
 ```sh
-v install --git https://github.com/steve/meshcore-v
+v install --git https://github.com/CptnDuras/meshcore-v
 ```
 
 Or vendor it and import the `meshcore` module.
