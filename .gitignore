@@ -1,0 +1,19 @@
+# V build artifacts
+*.exe
+*.exe~
+*_test
+main
+echo
+echo_dbg
+/examples/echo
+/examples/echo_dbg
+*.o
+*.so
+
+# editor / os
+.DS_Store
+*.swp
+.vscode/
+
+# V
+.bin/
