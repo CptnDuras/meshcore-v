@@ -77,3 +77,35 @@ and is NOT unit-tested (it needs hardware). Everything else is pure and testable
 ## Out of scope (needs hardware / not unit-tested)
 - SerialConnection.open/read_some/write_frame (real fd + termios).
 - MeshCore.create_serial end-to-end (covered by live manual test + examples/echo.v).
+
+## Coverage status & methodology (honest accounting)
+
+V 0.5.2 ships **no line-coverage tool**. The gcov-via-generated-C route was
+evaluated and rejected: V's generated C does not carry `#line` directives back
+to the `.v` sources, so gcov cannot attribute coverage to V source lines. A
+verified numeric "100%" is therefore not obtainable with the current toolchain.
+
+Instead we use **verified coverage-by-construction**: every pure function and
+branch has an exercising test, cross-checked against the function inventory.
+
+**Covered by tests (pure logic — 100% of functions):**
+- parsing.v: parse_frame (every code branch), parse_self_info, parse_device_info,
+  parse_sent, parse_contact_msg (v3 + non-v3), parse_channel_msg (v3 + non-v3),
+  le_u32, null_str (null-terminated + maxlen paths), advert/unknown/empty/truncated.
+- encoding.v: encode_app_start, encode_device_query, encode_sync_next_message,
+  encode_send_txt_msg (+truncation), encode_send_channel_txt_msg (+truncation),
+  put_u32_le.
+- connection.v (pure part): encode_frame, FrameReader.feed/next
+  (partial/resync/split/back-to-back).
+- events.v: is_error (true/false), subscribe, subscribe_filtered, dispatch,
+  process (via dispatch), wait_for_event (success + timeout), unsubscribe.
+- meshcore.v (pure helper): hex_to_bytes (valid + invalid-char branch).
+
+**Not unit-tested (I/O — requires the radio; verified via live hardware runs):**
+- SerialConnection.open/read_some/write_frame/close (termios + fd syscalls).
+- MeshCore.create_serial/read_loop/drain_messages/command round-trips — these
+  are exercised by examples/echo.v against a real Heltec V3 and were verified
+  live (SELF_INFO decode + DM echo). Their pure sub-parts (encoders, parser,
+  dispatcher) ARE unit-tested above.
+
+Run: `v test meshcore/`

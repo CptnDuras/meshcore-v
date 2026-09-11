@@ -5,12 +5,18 @@ pub const cmd_app_start = u8(1)
 pub const cmd_send_txt_msg = u8(2)
 pub const cmd_send_channel_txt_msg = u8(3)
 pub const cmd_get_contacts = u8(4)
+pub const cmd_send_self_advert = u8(7)
+pub const cmd_set_advert_name = u8(8)
+pub const cmd_add_update_contact = u8(9)
 pub const cmd_sync_next_message = u8(10)
 pub const cmd_device_query = u8(22)
 
 // --- Response codes (radio -> app) ---
 pub const resp_ok = u8(0)
 pub const resp_err = u8(1)
+pub const resp_contact_start = u8(2)
+pub const resp_contact = u8(3)
+pub const resp_contact_end = u8(4)
 pub const resp_self_info = u8(5)
 pub const resp_sent = u8(6)
 pub const resp_contact_msg_recv = u8(7)
@@ -25,6 +31,7 @@ pub const push_advert = u8(0x80)
 pub const push_path_updated = u8(0x81)
 pub const push_send_confirmed = u8(0x82)
 pub const push_msg_waiting = u8(0x83)
+pub const push_new_advert = u8(0x8A) // unknown node advertised -> NEW_CONTACT
 
 // --- little-endian + string helpers ---
 fn le_u32(b []u8, off int) u32 {
@@ -73,6 +80,37 @@ pub fn parse_frame(b []u8) Event {
 		}
 		resp_self_info {
 			return parse_self_info(b)
+		}
+		resp_contact_start {
+			cnt := if b.len >= 5 { le_u32(b, 1) } else { u32(0) }
+			return Event{
+				typ:     .contact_start
+				payload: Payload{
+					code:          code
+					contact_count: cnt
+				}
+			}
+		}
+		resp_contact {
+			return parse_contact(b)
+		}
+		resp_contact_end {
+			return Event{
+				typ:     .contact_end
+				payload: Payload{
+					code: code
+				}
+			}
+		}
+		push_new_advert {
+			// same body layout as a CONTACT entry, but unsolicited: an unknown
+			// node advertised. Surface as new_contact so callers can auto-add.
+			parsed := parse_contact(b)
+			return Event{
+				typ:        .new_contact
+				payload:    parsed.payload
+				attributes: parsed.attributes
+			}
 		}
 		resp_device_info {
 			return parse_device_info(b)
@@ -221,6 +259,9 @@ fn parse_contact_msg(b []u8, v3 bool) Event {
 	mut p := Payload{
 		code: b[0]
 	}
+	if v3 && b.len > 1 {
+		p.snr = snr_from_byte(b[1])
+	}
 	mut i := off
 	mut pref := []u8{}
 	for _ in 0 .. 6 {
@@ -262,6 +303,9 @@ fn parse_channel_msg(b []u8, v3 bool) Event {
 	mut p := Payload{
 		code: b[0]
 	}
+	if v3 && b.len > 1 {
+		p.snr = snr_from_byte(b[1])
+	}
 	mut i := off
 	if i < b.len {
 		p.channel_idx = b[i]
@@ -286,4 +330,65 @@ fn parse_channel_msg(b []u8, v3 bool) Event {
 		typ:     .channel_msg_recv
 		payload: p
 	}
+}
+
+// CONTACT (3): a single entry from CMD_GET_CONTACTS. Layout after byte 0:
+//   public_key(32) type(1) flags(1) path_len(1) path(64) adv_name(32)
+//   last_advert(4) adv_lat(4) adv_lon(4) lastmod(4)
+// We extract the 6-byte pubkey prefix, contact type, friendly name, and the
+// last_advert timestamp — enough to maintain a pubkey_prefix -> name mapping.
+fn parse_contact(b []u8) Event {
+	mut p := Payload{
+		code: b[0]
+	}
+	// public key: 32 bytes starting at offset 1; prefix is first 6 bytes.
+	if b.len >= 1 + 32 {
+		p.public_key = b[1..33].hex()
+		p.pubkey_prefix = b[1..7].hex()
+	} else {
+		return Event{
+			typ:     .contact
+			payload: p
+		}
+	}
+	// type(33), flags(34), path_len(35), path(36..100)
+	if b.len > 33 {
+		p.contact_type = b[33]
+	}
+	// adv_name: 32 bytes at offset 100 (1 + 32 + 1 + 1 + 1 + 64)
+	name_off := 100
+	if b.len >= name_off + 32 {
+		raw := b[name_off..name_off + 32]
+		p.adv_name = trim_nul(raw)
+	}
+	// last_advert: u32 at offset 132
+	la_off := name_off + 32
+	if b.len >= la_off + 4 {
+		p.last_advert = le_u32(b, la_off)
+	}
+	mut attrs := map[string]string{}
+	attrs['pubkey_prefix'] = p.pubkey_prefix
+	return Event{
+		typ:        .contact
+		payload:    p
+		attributes: attrs
+	}
+}
+
+// trim_nul decodes bytes as UTF-8 and drops NUL padding (fixed-width fields).
+fn trim_nul(b []u8) string {
+	mut end := b.len
+	for j in 0 .. b.len {
+		if b[j] == 0 {
+			end = j
+			break
+		}
+	}
+	return b[..end].bytestr()
+}
+
+// snr_from_byte decodes the V3 SNR byte: signed int8 scaled x4 -> dB.
+fn snr_from_byte(v u8) f64 {
+	sv := if v < 128 { int(v) } else { int(v) - 256 }
+	return f64(sv) / 4.0
 }

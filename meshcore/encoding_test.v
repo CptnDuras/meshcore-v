@@ -19,6 +19,60 @@ fn test_encode_sync_next_message() {
 	assert encode_sync_next_message() == [u8(10)]
 }
 
+fn test_encode_send_self_advert_zero_hop() {
+	// zero-hop advert is a single command byte 0x07
+	assert encode_send_self_advert(false) == [cmd_send_self_advert]
+	assert encode_send_self_advert(false) == [u8(7)]
+}
+
+fn test_encode_send_self_advert_flood() {
+	// flood advert appends 0x01
+	assert encode_send_self_advert(true) == [cmd_send_self_advert, u8(1)]
+	assert encode_send_self_advert(true) == [u8(7), u8(1)]
+}
+
+fn test_encode_get_contacts_all() {
+	assert encode_get_contacts(0) == [cmd_get_contacts]
+	assert encode_get_contacts(0) == [u8(4)]
+}
+
+fn test_encode_get_contacts_since() {
+	p := encode_get_contacts(u32(0x40302010))
+	assert p[0] == cmd_get_contacts
+	assert p[1] == u8(0x10)
+	assert p[2] == u8(0x20)
+	assert p[3] == u8(0x30)
+	assert p[4] == u8(0x40)
+}
+
+fn test_encode_set_advert_name() {
+	p := encode_set_advert_name('MESHBBS')
+	assert p[0] == cmd_set_advert_name // 8
+	assert p[1..] == 'MESHBBS'.bytes()
+}
+
+fn test_encode_add_update_contact_layout() {
+	pk := '4b81424f7106' + '00'.repeat(26) // 32-byte key (12 hex + padding)
+	p := encode_add_update_contact(pk, u8(1), u8(0), 'XeroKuhl', u32(0x11223344), i32(0),
+		i32(0))
+	assert p[0] == cmd_add_update_contact // 9
+	// public key: 32 bytes at offset 1; first 6 are the prefix
+	assert p[1..7] == [u8(0x4b), 0x81, 0x42, 0x4f, 0x71, 0x06]
+	assert p[33] == u8(1) // type
+	assert p[34] == u8(0) // flags
+	assert p[35] == u8(0) // out_path_len = 0 (flood)
+	// adv_name is 32 bytes right after out_path_len (no path bytes)
+	name_bytes := p[36..68]
+	assert name_bytes[..8] == 'XeroKuhl'.bytes()
+	// last_advert u32 LE at offset 68
+	assert p[68] == u8(0x44)
+	assert p[69] == u8(0x33)
+	assert p[70] == u8(0x22)
+	assert p[71] == u8(0x11)
+	// total: 1 + 32 + 1 + 1 + 1 + 32 + 4 + 4 + 4 = 80 bytes
+	assert p.len == 80
+}
+
 fn test_encode_send_txt_msg_layout() {
 	prefix := [u8(0x4b), 0x81, 0x42, 0x4f, 0x71, 0x06]
 	p := encode_send_txt_msg(prefix, u32(0x40302010), 'hi')

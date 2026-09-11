@@ -15,6 +15,9 @@ pub enum EventType {
 	// contacts
 	contacts
 	new_contact
+	contact_start
+	contact
+	contact_end
 	// messaging
 	contact_msg_recv
 	channel_msg_recv
@@ -61,6 +64,13 @@ pub mut:
 	txt_type      u8
 	sender_ts     u32
 	text          string
+	// contacts (from CMD_GET_CONTACTS -> CONTACT frames)
+	adv_name      string // node friendly name
+	contact_type  u8
+	last_advert   u32
+	contact_count u32 // from CONTACT_START
+	// signal quality (from V3 message frames): SNR in dB (0 if unknown)
+	snr f64
 	// msg_sent
 	expected_ack string
 	suggested_timeout u32

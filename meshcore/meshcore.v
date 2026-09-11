@@ -160,6 +160,94 @@ pub fn (mut mc MeshCore) send_chan_msg(channel_idx u8, text string) !Event {
 	return mc.wait_for_event(.ok, 5000) or { return error('timeout waiting for OK') }
 }
 
+// send_advert broadcasts this node's self-advert so other nodes discover it.
+// flood=false is a zero-hop advert (local neighbours only); flood=true asks
+// the mesh to flood it further. Mirrors the reference client's send_advert().
+pub fn (mut mc MeshCore) send_advert(flood bool) !Event {
+	mc.conn.write_frame(encode_send_self_advert(flood))!
+	return mc.wait_for_event(.ok, 5000) or { return error('timeout waiting for OK') }
+}
+
+// set_name sets this node's advertised friendly device name (e.g. 'MESHBBS').
+// Firmware replies OK; callers typically follow with send_advert so neighbours
+// pick up the new name.
+pub fn (mut mc MeshCore) set_name(name string) !Event {
+	mc.conn.write_frame(encode_set_advert_name(name))!
+	return mc.wait_for_event(.ok, 5000) or { return error('timeout waiting for OK') }
+}
+
+// add_contact adds/updates a contact in the radio's contact book (CMD 9),
+// used to auto-accept a node. Firmware replies OK/ERROR.
+pub fn (mut mc MeshCore) add_contact(public_key_hex string, ctype u8, flags u8, adv_name string, last_advert u32, adv_lat i32, adv_lon i32) !Event {
+	mc.conn.write_frame(encode_add_update_contact(public_key_hex, ctype, flags, adv_name,
+		last_advert, adv_lat, adv_lon))!
+	return mc.wait_for_event(.ok, 5000) or { return error('timeout waiting for OK') }
+}
+
+// accept_contact is a convenience that auto-accepts a node from a NEW_CONTACT
+// (new_contact) event payload: it adds the contact using the advertised fields.
+pub fn (mut mc MeshCore) accept_contact(p Payload) !Event {
+	return mc.add_contact(p.public_key, p.contact_type, u8(0), p.adv_name, p.last_advert,
+		i32(0), i32(0))
+}
+
+// get_contacts requests the full contact list and collects every CONTACT entry
+// until CONTACT_END (or the timeout elapses). Returns the decoded Payloads,
+// each carrying pubkey_prefix + adv_name. `since` (lastmod) can limit the sync;
+// pass 0 for all contacts.
+pub fn (mut mc MeshCore) get_contacts(since u32, timeout_ms int) ![]Payload {
+	collected := chan Payload{cap: 256}
+	done := chan bool{cap: 1}
+	on_contact := fn [collected] (ev Event) {
+		select {
+			collected <- ev.payload {}
+			else {}
+		}
+	}
+	on_end := fn [done] (ev Event) {
+		select {
+			done <- true {}
+			else {}
+		}
+	}
+	s_contact := mc.dispatcher.subscribe(.contact, on_contact)
+	s_end := mc.dispatcher.subscribe(.contact_end, on_end)
+	defer {
+		mc.dispatcher.unsubscribe(s_contact)
+		mc.dispatcher.unsubscribe(s_end)
+	}
+
+	mc.conn.write_frame(encode_get_contacts(since))!
+
+	mut out := []Payload{}
+	deadline := time.now().add(timeout_ms * time.millisecond)
+	for time.now() < deadline {
+		select {
+			c := <-collected {
+				out << c
+			}
+			finished := <-done {
+				if finished {
+					// drain any stragglers already queued, then stop
+					for {
+						select {
+							c := <-collected {
+								out << c
+							}
+							else {
+								break
+							}
+						}
+					}
+					return out
+				}
+			}
+			200 * time.millisecond {}
+		}
+	}
+	return out
+}
+
 // start_auto_message_fetching mirrors meshcore.py: on MESSAGES_WAITING, drain
 // the queue via get_msg until NO_MORE_MSGS. Runs a background thread.
 pub fn (mut mc MeshCore) start_auto_message_fetching() {

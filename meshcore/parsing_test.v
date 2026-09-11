@@ -135,3 +135,98 @@ fn test_parse_truncated_self_info_graceful() {
 	ev := parse_frame([u8(5), u8(1), u8(2)])
 	assert ev.typ == .raw
 }
+
+// --- contact list (CMD_GET_CONTACTS) parsing ---
+
+// build_contact_frame assembles a synthetic CONTACT (0x03) frame with the
+// given pubkey-prefix hex (>=6 bytes worth) and adv_name, matching the wire
+// layout: pubkey(32) type(1) flags(1) path_len(1) path(64) name(32)
+// last_advert(4) lat(4) lon(4) lastmod(4).
+fn build_contact_frame(pubkey_hex string, ctype u8, name string, last_advert u32) []u8 {
+	mut b := []u8{}
+	b << u8(3) // resp_contact
+	// public key: 32 bytes; pad/truncate the provided hex bytes to 32.
+	mut pk := hx(pubkey_hex)
+	for pk.len < 32 {
+		pk << u8(0)
+	}
+	b << pk[..32]
+	b << ctype // type
+	b << u8(0) // flags
+	b << u8(255) // path_len (flood)
+	for _ in 0 .. 64 {
+		b << u8(0) // path (fixed 64)
+	}
+	// adv_name: 32 bytes, NUL-padded
+	mut nm := name.bytes()
+	for nm.len < 32 {
+		nm << u8(0)
+	}
+	b << nm[..32]
+	// last_advert (u32 LE), lat, lon, lastmod
+	b << u8(last_advert & 0xFF)
+	b << u8((last_advert >> 8) & 0xFF)
+	b << u8((last_advert >> 16) & 0xFF)
+	b << u8((last_advert >> 24) & 0xFF)
+	for _ in 0 .. 12 {
+		b << u8(0) // lat+lon+lastmod
+	}
+	return b
+}
+
+fn test_parse_contact_golden() {
+	frame := build_contact_frame('4b81424f7106', u8(1), 'XeroKuhl', u32(0x11223344))
+	ev := parse_frame(frame)
+	assert ev.typ == .contact
+	p := ev.payload
+	assert p.pubkey_prefix == '4b81424f7106'
+	assert p.contact_type == 1
+	assert p.adv_name == 'XeroKuhl'
+	assert p.last_advert == u32(0x11223344)
+	// pubkey_prefix exposed as attribute for filtering
+	assert ev.attributes['pubkey_prefix'] == '4b81424f7106'
+}
+
+fn test_parse_contact_name_shorter_than_field() {
+	frame := build_contact_frame('72944c994616', u8(1), 'Orion', u32(0))
+	ev := parse_frame(frame)
+	assert ev.payload.adv_name == 'Orion'
+	assert ev.payload.pubkey_prefix == '72944c994616'
+}
+
+fn test_parse_contact_start_count() {
+	// CONTACT_START (2) carries a u32 count
+	b := [u8(2), 5, 0, 0, 0]
+	ev := parse_frame(b)
+	assert ev.typ == .contact_start
+	assert ev.payload.contact_count == 5
+}
+
+fn test_parse_contact_end() {
+	ev := parse_frame([u8(4)])
+	assert ev.typ == .contact_end
+}
+
+fn test_parse_contact_msg_v3_snr() {
+	// fx_contact_v3 has snr byte 0x31 (49) at index 1 -> 49/4 = 12.25 dB
+	ev := parse_frame(hx(fx_contact_v3))
+	assert ev.typ == .contact_msg_recv
+	assert ev.payload.snr > 12.0 && ev.payload.snr < 12.5
+}
+
+fn test_snr_from_byte_signed() {
+	// positive
+	assert snr_from_byte(u8(0x31)) == 12.25
+	// negative: 0xFC = -4 -> -1.0 dB
+	assert snr_from_byte(u8(0xFC)) == -1.0
+}
+
+fn test_parse_new_advert_as_new_contact() {
+	// push_new_advert (0x8A) shares the CONTACT body; must surface as new_contact
+	mut frame := build_contact_frame('aabbccddeeff', u8(1), 'NewNode', u32(0x22334455))
+	frame[0] = u8(0x8A) // replace resp_contact(3) with push_new_advert
+	ev := parse_frame(frame)
+	assert ev.typ == .new_contact
+	assert ev.payload.pubkey_prefix == 'aabbccddeeff'
+	assert ev.payload.adv_name == 'NewNode'
+}
