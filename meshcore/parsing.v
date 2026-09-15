@@ -10,6 +10,7 @@ pub const cmd_set_advert_name = u8(8)
 pub const cmd_add_update_contact = u8(9)
 pub const cmd_sync_next_message = u8(10)
 pub const cmd_device_query = u8(22)
+pub const cmd_send_channel_data = u8(0x3E) // binary channel datagram (SEND_CHANNEL_DATA)
 
 // --- Response codes (radio -> app) ---
 pub const resp_ok = u8(0)
@@ -25,6 +26,7 @@ pub const resp_no_more_messages = u8(10)
 pub const resp_device_info = u8(13)
 pub const resp_contact_msg_recv_v3 = u8(16)
 pub const resp_channel_msg_recv_v3 = u8(17)
+pub const resp_channel_data_recv = u8(0x1B) // inbound binary channel datagram
 
 // --- Push codes (radio -> app, unsolicited) ---
 pub const push_advert = u8(0x80)
@@ -36,6 +38,11 @@ pub const push_new_advert = u8(0x8A) // unknown node advertised -> NEW_CONTACT
 // --- little-endian + string helpers ---
 fn le_u32(b []u8, off int) u32 {
 	return u32(b[off]) | (u32(b[off + 1]) << 8) | (u32(b[off + 2]) << 16) | (u32(b[off + 3]) << 24)
+}
+
+// little-endian u16 read
+fn le_u16(b []u8, off int) u16 {
+	return u16(b[off]) | (u16(b[off + 1]) << 8)
 }
 
 fn null_str(b []u8, off int, maxlen int) string {
@@ -53,7 +60,7 @@ fn null_str(b []u8, off int, maxlen int) string {
 pub fn parse_frame(b []u8) Event {
 	if b.len == 0 {
 		return Event{
-			typ:     .raw
+			typ: .raw
 			payload: Payload{}
 		}
 	}
@@ -61,7 +68,7 @@ pub fn parse_frame(b []u8) Event {
 	match code {
 		resp_ok {
 			return Event{
-				typ:     .ok
+				typ: .ok
 				payload: Payload{
 					code: code
 				}
@@ -70,11 +77,11 @@ pub fn parse_frame(b []u8) Event {
 		resp_err {
 			ec := if b.len > 1 { b[1] } else { u8(0) }
 			return Event{
-				typ:     .error
+				typ: .error
 				payload: Payload{
-					code:     code
+					code: code
 					err_code: ec
-					reason:   'err_code ${ec}'
+					reason: 'err_code ${ec}'
 				}
 			}
 		}
@@ -84,9 +91,9 @@ pub fn parse_frame(b []u8) Event {
 		resp_contact_start {
 			cnt := if b.len >= 5 { le_u32(b, 1) } else { u32(0) }
 			return Event{
-				typ:     .contact_start
+				typ: .contact_start
 				payload: Payload{
-					code:          code
+					code: code
 					contact_count: cnt
 				}
 			}
@@ -96,7 +103,7 @@ pub fn parse_frame(b []u8) Event {
 		}
 		resp_contact_end {
 			return Event{
-				typ:     .contact_end
+				typ: .contact_end
 				payload: Payload{
 					code: code
 				}
@@ -107,8 +114,8 @@ pub fn parse_frame(b []u8) Event {
 			// node advertised. Surface as new_contact so callers can auto-add.
 			parsed := parse_contact(b)
 			return Event{
-				typ:        .new_contact
-				payload:    parsed.payload
+				typ: .new_contact
+				payload: parsed.payload
 				attributes: parsed.attributes
 			}
 		}
@@ -130,9 +137,12 @@ pub fn parse_frame(b []u8) Event {
 		resp_channel_msg_recv_v3 {
 			return parse_channel_msg(b, true)
 		}
+		resp_channel_data_recv {
+			return parse_channel_data(b)
+		}
 		resp_no_more_messages {
 			return Event{
-				typ:     .no_more_msgs
+				typ: .no_more_msgs
 				payload: Payload{
 					code: code
 				}
@@ -140,7 +150,7 @@ pub fn parse_frame(b []u8) Event {
 		}
 		push_msg_waiting {
 			return Event{
-				typ:     .messages_waiting
+				typ: .messages_waiting
 				payload: Payload{
 					code: code
 				}
@@ -154,16 +164,16 @@ pub fn parse_frame(b []u8) Event {
 				}
 			}
 			return Event{
-				typ:     .advertisement
+				typ: .advertisement
 				payload: Payload{
-					code:       code
+					code: code
 					public_key: key.hex()
 				}
 			}
 		}
 		push_send_confirmed {
 			return Event{
-				typ:     .ack
+				typ: .ack
 				payload: Payload{
 					code: code
 				}
@@ -171,9 +181,9 @@ pub fn parse_frame(b []u8) Event {
 		}
 		else {
 			return Event{
-				typ:     .raw
+				typ: .raw
 				payload: Payload{
-					code:    code
+					code: code
 					raw_hex: b.hex()
 				}
 			}
@@ -184,9 +194,9 @@ pub fn parse_frame(b []u8) Event {
 fn parse_self_info(b []u8) Event {
 	if b.len < 58 {
 		return Event{
-			typ:     .raw
+			typ: .raw
 			payload: Payload{
-				code:    b[0]
+				code: b[0]
 				raw_hex: b.hex()
 			}
 		}
@@ -196,18 +206,18 @@ fn parse_self_info(b []u8) Event {
 		key << b[i]
 	}
 	return Event{
-		typ:     .self_info
+		typ: .self_info
 		payload: Payload{
-			code:       b[0]
-			adv_type:   b[1]
-			tx_power:   b[2]
+			code: b[0]
+			adv_type: b[1]
+			tx_power: b[2]
 			max_tx_pow: b[3]
 			public_key: key.hex()
 			radio_freq: f64(le_u32(b, 48)) / 1000.0
-			radio_bw:   f64(le_u32(b, 52)) / 1000.0
-			radio_sf:   b[56]
-			radio_cr:   b[57]
-			name:       null_str(b, 58, b.len - 58)
+			radio_bw: f64(le_u32(b, 52)) / 1000.0
+			radio_sf: b[56]
+			radio_cr: b[57]
+			name: null_str(b, 58, b.len - 58)
 		}
 	}
 }
@@ -215,21 +225,21 @@ fn parse_self_info(b []u8) Event {
 fn parse_device_info(b []u8) Event {
 	if b.len < 8 {
 		return Event{
-			typ:     .raw
+			typ: .raw
 			payload: Payload{
-				code:    b[0]
+				code: b[0]
 				raw_hex: b.hex()
 			}
 		}
 	}
 	return Event{
-		typ:     .device_info
+		typ: .device_info
 		payload: Payload{
-			code:         b[0]
+			code: b[0]
 			firmware_ver: b[1]
-			fw_build:     null_str(b, 8, 12)
-			model:        null_str(b, 20, 40)
-			fw_version:   null_str(b, 60, 20)
+			fw_build: null_str(b, 8, 12)
+			model: null_str(b, 20, 40)
+			fw_version: null_str(b, 60, 20)
 		}
 	}
 }
@@ -243,10 +253,10 @@ fn parse_sent(b []u8) Event {
 	}
 	timeout := if b.len >= 10 { le_u32(b, 6) } else { u32(0) }
 	return Event{
-		typ:     .msg_sent
+		typ: .msg_sent
 		payload: Payload{
-			code:              b[0]
-			expected_ack:      ack.hex()
+			code: b[0]
+			expected_ack: ack.hex()
 			suggested_timeout: timeout
 		}
 	}
@@ -290,8 +300,8 @@ fn parse_contact_msg(b []u8, v3 bool) Event {
 	mut attrs := map[string]string{}
 	attrs['pubkey_prefix'] = p.pubkey_prefix
 	return Event{
-		typ:        .contact_msg_recv
-		payload:    p
+		typ: .contact_msg_recv
+		payload: p
 		attributes: attrs
 	}
 }
@@ -327,7 +337,40 @@ fn parse_channel_msg(b []u8, v3 bool) Event {
 		p.text = b[i..].bytestr()
 	}
 	return Event{
-		typ:     .channel_msg_recv
+		typ: .channel_msg_recv
+		payload: p
+	}
+}
+
+// CHANNEL_DATA_RECV (0x1B): inbound binary channel datagram. Frame layout:
+//   [0]=0x1B [1]=snr(int8 x4) [2..4]=reserved [4]=channel_idx [5]=path_len
+//   [6..8]=data_type(u16 LE) [8]=data_len [9..]=binary payload
+fn parse_channel_data(b []u8) Event {
+	mut p := Payload{
+		code: b[0]
+	}
+	if b.len > 1 {
+		p.snr = snr_from_byte(b[1])
+	}
+	if b.len > 4 {
+		p.channel_idx = b[4]
+	}
+	if b.len > 5 {
+		p.path_len = b[5]
+	}
+	if b.len >= 8 {
+		p.data_type = le_u16(b, 6)
+	}
+	mut dlen := 0
+	if b.len > 8 {
+		dlen = int(b[8])
+	}
+	if b.len > 9 && dlen > 0 {
+		end := if 9 + dlen <= b.len { 9 + dlen } else { b.len }
+		p.data = b[9..end].clone()
+	}
+	return Event{
+		typ: .channel_data_recv
 		payload: p
 	}
 }
@@ -347,7 +390,7 @@ fn parse_contact(b []u8) Event {
 		p.pubkey_prefix = b[1..7].hex()
 	} else {
 		return Event{
-			typ:     .contact
+			typ: .contact
 			payload: p
 		}
 	}
@@ -369,8 +412,8 @@ fn parse_contact(b []u8) Event {
 	mut attrs := map[string]string{}
 	attrs['pubkey_prefix'] = p.pubkey_prefix
 	return Event{
-		typ:        .contact
-		payload:    p
+		typ: .contact
+		payload: p
 		attributes: attrs
 	}
 }

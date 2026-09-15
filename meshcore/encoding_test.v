@@ -53,8 +53,7 @@ fn test_encode_set_advert_name() {
 
 fn test_encode_add_update_contact_layout() {
 	pk := '4b81424f7106' + '00'.repeat(26) // 32-byte key (12 hex + padding)
-	p := encode_add_update_contact(pk, u8(1), u8(0), 'XeroKuhl', u32(0x11223344), i32(0),
-		i32(0))
+	p := encode_add_update_contact(pk, u8(1), u8(0), 'XeroKuhl', u32(0x11223344), i32(0), i32(0))
 	assert p[0] == cmd_add_update_contact // 9
 	// public key: 32 bytes at offset 1; first 6 are the prefix
 	assert p[1..7] == [u8(0x4b), 0x81, 0x42, 0x4f, 0x71, 0x06]
@@ -113,6 +112,29 @@ fn test_encode_send_channel_txt_msg_truncates() {
 	p := encode_send_channel_txt_msg(u8(0), u32(0), long)
 	// header(3) + ts(4) = 7 bytes, then text capped at 150
 	assert p[7..].len == 150
+}
+
+fn test_encode_send_channel_data_layout() {
+	// data_type 0x1234 must be encoded LITTLE-endian: bytes 0x34, 0x12
+	payload := [u8(0xDE), 0xAD, 0xBE, 0xEF]
+	p := encode_send_channel_data(u8(2), u16(0x1234), payload)
+	assert p[0] == cmd_send_channel_data // 0x3E
+	assert p[1] == u8(2) // channel_idx
+	assert p[2] == u8(0xFF) // path_len = flood
+	// data_type little-endian
+	assert p[3] == u8(0x34)
+	assert p[4] == u8(0x12)
+	// payload follows verbatim
+	assert p[5..] == payload
+	// total: 3 header + 2 data_type + 4 payload = 9
+	assert p.len == 9
+}
+
+fn test_encode_send_channel_data_truncates() {
+	long := []u8{len: 300, init: u8(0x41)}
+	p := encode_send_channel_data(u8(0), u16(0), long)
+	// header(3) + data_type(2) = 5 bytes, then payload capped at 163
+	assert p[5..].len == 163
 }
 
 fn test_hex_to_bytes_roundtrip() {

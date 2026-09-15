@@ -19,7 +19,7 @@ pub mut:
 // reader loop, send appstart, and return the ready client.
 pub fn create_serial(port string, baud int, debug bool) !&MeshCore {
 	mut mc := &MeshCore{
-		conn:  SerialConnection{
+		conn: SerialConnection{
 			port: port
 			baud: baud
 		}
@@ -114,11 +114,13 @@ pub fn (mut mc MeshCore) get_msg(timeout_ms int) ?Event {
 	// racing three short waits is overkill — instead wait on a small window
 	// and let the reader dispatch; we subscribe to all three via match.
 	deadline := time.now().add(timeout_ms * time.millisecond)
-	result := chan Event{cap: 1}
+	result := chan Event{ cap: 1 }
 	cb := fn [result] (ev Event) {
 		select {
-			result <- ev {}
-			else {}
+			result <- ev {
+			}
+			else {
+			}
 		}
 	}
 	s1 := mc.dispatcher.subscribe(.contact_msg_recv, cb)
@@ -134,7 +136,8 @@ pub fn (mut mc MeshCore) get_msg(timeout_ms int) ?Event {
 			ev := <-result {
 				return ev
 			}
-			300 * time.millisecond {}
+			300 * time.millisecond {
+			}
 		}
 	}
 	return none
@@ -160,6 +163,14 @@ pub fn (mut mc MeshCore) send_chan_msg(channel_idx u8, text string) !Event {
 	return mc.wait_for_event(.ok, 5000) or { return error('timeout waiting for OK') }
 }
 
+// send_channel_data sends a binary datagram to a channel (0 = public) as a
+// flood. data_type is an app-defined u16 (little-endian on the wire); payload
+// is raw bytes (<= ~163). Firmware replies PACKET_OK/ERROR.
+pub fn (mut mc MeshCore) send_channel_data(channel_idx u8, data_type u16, payload []u8) !Event {
+	mc.conn.write_frame(encode_send_channel_data(channel_idx, data_type, payload))!
+	return mc.wait_for_event(.ok, 5000) or { return error('timeout waiting for OK') }
+}
+
 // send_advert broadcasts this node's self-advert so other nodes discover it.
 // flood=false is a zero-hop advert (local neighbours only); flood=true asks
 // the mesh to flood it further. Mirrors the reference client's send_advert().
@@ -179,16 +190,14 @@ pub fn (mut mc MeshCore) set_name(name string) !Event {
 // add_contact adds/updates a contact in the radio's contact book (CMD 9),
 // used to auto-accept a node. Firmware replies OK/ERROR.
 pub fn (mut mc MeshCore) add_contact(public_key_hex string, ctype u8, flags u8, adv_name string, last_advert u32, adv_lat i32, adv_lon i32) !Event {
-	mc.conn.write_frame(encode_add_update_contact(public_key_hex, ctype, flags, adv_name,
-		last_advert, adv_lat, adv_lon))!
+	mc.conn.write_frame(encode_add_update_contact(public_key_hex, ctype, flags, adv_name, last_advert, adv_lat, adv_lon))!
 	return mc.wait_for_event(.ok, 5000) or { return error('timeout waiting for OK') }
 }
 
 // accept_contact is a convenience that auto-accepts a node from a NEW_CONTACT
 // (new_contact) event payload: it adds the contact using the advertised fields.
 pub fn (mut mc MeshCore) accept_contact(p Payload) !Event {
-	return mc.add_contact(p.public_key, p.contact_type, u8(0), p.adv_name, p.last_advert,
-		i32(0), i32(0))
+	return mc.add_contact(p.public_key, p.contact_type, u8(0), p.adv_name, p.last_advert, i32(0), i32(0))
 }
 
 // get_contacts requests the full contact list and collects every CONTACT entry
@@ -196,18 +205,22 @@ pub fn (mut mc MeshCore) accept_contact(p Payload) !Event {
 // each carrying pubkey_prefix + adv_name. `since` (lastmod) can limit the sync;
 // pass 0 for all contacts.
 pub fn (mut mc MeshCore) get_contacts(since u32, timeout_ms int) ![]Payload {
-	collected := chan Payload{cap: 256}
-	done := chan bool{cap: 1}
+	collected := chan Payload{ cap: 256 }
+	done := chan bool{ cap: 1 }
 	on_contact := fn [collected] (ev Event) {
 		select {
-			collected <- ev.payload {}
-			else {}
+			collected <- ev.payload {
+			}
+			else {
+			}
 		}
 	}
 	on_end := fn [done] (ev Event) {
 		select {
-			done <- true {}
-			else {}
+			done <- true {
+			}
+			else {
+			}
 		}
 	}
 	s_contact := mc.dispatcher.subscribe(.contact, on_contact)
@@ -242,7 +255,8 @@ pub fn (mut mc MeshCore) get_contacts(since u32, timeout_ms int) ![]Payload {
 					return out
 				}
 			}
-			200 * time.millisecond {}
+			200 * time.millisecond {
+			}
 		}
 	}
 	return out

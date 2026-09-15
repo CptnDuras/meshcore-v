@@ -96,11 +96,38 @@ fn test_parse_contact_msg_nonv3() {
 
 fn test_parse_sent() {
 	// [6, type, ack(4), timeout(4)]
-	b := [u8(6), u8(0), u8(0x65), u8(0x78), u8(0x2c), u8(0xa1), u8(0x28), u8(0x08),
-		u8(0), u8(0)]
+	b := [u8(6), u8(0), u8(0x65), u8(0x78), u8(0x2c), u8(0xa1), u8(0x28), u8(0x08), u8(0), u8(0)]
 	ev := parse_frame(b)
 	assert ev.typ == .msg_sent
 	assert ev.payload.expected_ack == '65782ca1'
+}
+
+fn test_parse_channel_data_recv_golden() {
+	// CHANNEL_DATA_RECV (0x1B):
+	// [0]=0x1B [1]=snr(0x31=49 -> 12.25dB) [2..4]=reserved [4]=channel_idx
+	// [5]=path_len [6..8]=data_type(u16 LE) [8]=data_len [9..]=payload
+	payload := [u8(0xDE), 0xAD, 0xBE, 0xEF]
+	mut b := [u8(0x1B), u8(0x31), u8(0), u8(0), u8(3), u8(0xFF)]
+	b << [u8(0x34), u8(0x12)] // data_type 0x1234 little-endian
+	b << u8(payload.len) // data_len
+	b << payload
+	ev := parse_frame(b)
+	assert ev.typ == .channel_data_recv
+	assert ev.payload.channel_idx == 3
+	assert ev.payload.path_len == u8(0xFF)
+	assert ev.payload.data_type == u16(0x1234)
+	assert ev.payload.data == payload
+	// snr byte 0x31 (49) -> 12.25 dB
+	assert ev.payload.snr > 12.0 && ev.payload.snr < 12.5
+}
+
+fn test_parse_channel_data_recv_empty_payload() {
+	// zero-length payload datagram: data_len=0, no payload bytes
+	b := [u8(0x1B), u8(0), u8(0), u8(0), u8(0), u8(0xFF), u8(0x01), u8(0x00), u8(0)]
+	ev := parse_frame(b)
+	assert ev.typ == .channel_data_recv
+	assert ev.payload.data_type == u16(0x0001)
+	assert ev.payload.data.len == 0
 }
 
 fn test_parse_control_codes() {

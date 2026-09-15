@@ -19,6 +19,12 @@ fn put_i32_le(mut p []u8, v i32) {
 	put_u32_le(mut p, u)
 }
 
+// append little-endian u16
+fn put_u16_le(mut p []u8, v u16) {
+	p << u8(v & 0xFF)
+	p << u8((v >> 8) & 0xFF)
+}
+
 // CMD_APP_START: [1, app_ver=3, 6 reserved (0x20), app_name...]
 pub fn encode_app_start(app_name string) []u8 {
 	mut p := []u8{}
@@ -139,5 +145,23 @@ pub fn encode_send_channel_txt_msg(channel_idx u8, ts u32, text string) []u8 {
 		t = t[..150]
 	}
 	p << t.bytes()
+	return p
+}
+
+// CMD_SEND_CHANNEL_DATA (0x3E): binary channel datagram. Layout:
+//   [0]=0x3E [1]=channel_idx [2]=path_len(0xFF=flood, no path bytes follow)
+//   [3..5]=data_type(u16 LITTLE-endian) [5..]=binary payload (<= ~163 bytes)
+// Responds with PACKET_OK (0x00) / ERROR. Payload is capped at 163 bytes.
+pub fn encode_send_channel_data(channel_idx u8, data_type u16, payload []u8) []u8 {
+	mut p := []u8{}
+	p << cmd_send_channel_data
+	p << channel_idx
+	p << u8(0xFF) // path_len = flood (no path bytes follow)
+	put_u16_le(mut p, data_type)
+	mut pl := payload.clone()
+	if pl.len > 163 {
+		pl = pl[..163]
+	}
+	p << pl
 	return p
 }

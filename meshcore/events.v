@@ -21,6 +21,7 @@ pub enum EventType {
 	// messaging
 	contact_msg_recv
 	channel_msg_recv
+	channel_data_recv
 	no_more_msgs
 	msg_sent
 	messages_waiting
@@ -44,18 +45,18 @@ pub enum EventType {
 pub struct Payload {
 pub mut:
 	// self_info / device_info
-	name        string
-	public_key  string
-	adv_type    u8
-	tx_power    u8
-	max_tx_pow  u8
-	radio_freq  f64
-	radio_bw    f64
-	radio_sf    u8
-	radio_cr    u8
-	model       string
-	fw_version  string
-	fw_build    string
+	name         string
+	public_key   string
+	adv_type     u8
+	tx_power     u8
+	max_tx_pow   u8
+	radio_freq   f64
+	radio_bw     f64
+	radio_sf     u8
+	radio_cr     u8
+	model        string
+	fw_version   string
+	fw_build     string
 	firmware_ver u8
 	// messages
 	pubkey_prefix string
@@ -64,6 +65,9 @@ pub mut:
 	txt_type      u8
 	sender_ts     u32
 	text          string
+	// binary channel datagrams (CHANNEL_DATA_RECV): raw payload + its type
+	data      []u8
+	data_type u16
 	// contacts (from CMD_GET_CONTACTS -> CONTACT frames)
 	adv_name      string // node friendly name
 	contact_type  u8
@@ -72,7 +76,7 @@ pub mut:
 	// signal quality (from V3 message frames): SNR in dB (0 if unknown)
 	snr f64
 	// msg_sent
-	expected_ack string
+	expected_ack      string
 	suggested_timeout u32
 	// error
 	err_code u8
@@ -113,11 +117,11 @@ mut:
 // V equivalent of the asyncio queue + task.
 pub struct EventDispatcher {
 mut:
-	mu       &sync.Mutex = sync.new_mutex()
-	subs     []Subscription
-	next_id  int
-	queue    chan Event = chan Event{cap: 128}
-	running  bool
+	mu      &sync.Mutex = sync.new_mutex()
+	subs    []Subscription
+	next_id int
+	queue   chan Event = chan Event{ cap: 128 }
+	running bool
 }
 
 // start launches the background processing thread.
@@ -180,11 +184,11 @@ pub fn (mut d EventDispatcher) subscribe_filtered(event_type EventType, cb fn (E
 	defer { d.mu.unlock() }
 	d.next_id++
 	s := Subscription{
-		id:         d.next_id
+		id: d.next_id
 		event_type: event_type
-		match_all:  false
-		filters:    filters.clone()
-		cb:         cb
+		match_all: false
+		filters: filters.clone()
+		cb: cb
 	}
 	d.subs << s
 	return s
@@ -208,13 +212,15 @@ pub fn (mut d EventDispatcher) stop() {
 // wait_for_event blocks until a matching event arrives or timeout elapses.
 // Mirrors events.py wait_for_event using a one-shot channel.
 pub fn (mut d EventDispatcher) wait_for_event(event_type EventType, filters map[string]string, timeout_ms int) ?Event {
-	result := chan Event{cap: 1}
+	result := chan Event{ cap: 1 }
 	// a subscription that pushes the first match into the channel
 	cb := fn [result] (ev Event) {
 		// non-blocking send; ignore if already delivered
 		select {
-			result <- ev {}
-			else {}
+			result <- ev {
+			}
+			else {
+			}
 		}
 	}
 	sub := d.subscribe_filtered(event_type, cb, filters)
