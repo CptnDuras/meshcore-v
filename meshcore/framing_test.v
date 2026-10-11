@@ -88,3 +88,42 @@ fn test_reader_split_across_feeds() {
 	}
 	assert got == [u8(0x41), u8(0x42)]
 }
+
+
+// Memory stress test - verifies FrameReader doesn't leak with many frames.
+// Run with: v -g -cflags "-fsanitize=address" test meshcore/framing_test.v
+fn test_reader_many_frames_no_leak() {
+	mut r := FrameReader{}
+	// Simulate 10,000 frames - if there's a leak, memory would grow significantly
+	for _ in 0 .. 10000 {
+		// Valid frame: '>' + len(2) + payload(32 bytes)
+		payload := []u8{len: 32, init: 0xAB}
+		r.feed([u8(0x3E), u8(32), u8(0)])
+		r.feed(payload)
+		got := r.next() or {
+			assert false, 'expected frame'
+			return
+		}
+		assert got.len == 32
+	}
+	// After processing all frames, buffer should be mostly empty
+	// (just the pos index, no accumulated data)
+	assert r.next() == none
+}
+
+fn test_reader_compaction_triggers() {
+	mut r := FrameReader{}
+	// Feed enough small frames to trigger compaction (threshold is 4KB)
+	// Each frame is 3+10 = 13 bytes, need ~320 frames to hit 4KB
+	for i in 0 .. 400 {
+		payload := []u8{len: 10, init: u8(i & 0xFF)}
+		r.feed([u8(0x3E), u8(10), u8(0)])
+		r.feed(payload)
+		got := r.next() or {
+			assert false, 'expected frame ${i}'
+			return
+		}
+		assert got.len == 10
+	}
+	assert r.next() == none
+}

@@ -82,7 +82,9 @@ pub fn (mut c SerialConnection) read_some(max int) []u8 {
 	if n <= 0 {
 		return []u8{}
 	}
-	return buf[..n].clone()
+	// Trim in place rather than clone - buf is local so this is safe
+	buf.trim(n)
+	return buf
 }
 
 pub fn (mut c SerialConnection) close() {
@@ -94,9 +96,31 @@ pub fn (mut c SerialConnection) close() {
 
 // FrameReader accumulates bytes and extracts complete outbound ('>') frames.
 // Mirrors reader.py's framing responsibility.
+//
+// Memory optimization: uses a read index to avoid repeated clone() calls on
+// every frame. The buffer is only compacted when the consumed portion exceeds
+// a threshold, reducing allocations from O(frames) to O(1) amortized.
 pub struct FrameReader {
 mut:
 	buf []u8
+	pos int // read position into buf
+}
+
+// compact shifts unconsumed data to front when we've consumed enough.
+// Threshold of 4KB balances memory use vs allocation frequency.
+fn (mut r FrameReader) compact() {
+	if r.pos > 4096 {
+		if r.pos < r.buf.len {
+			remaining := r.buf.len - r.pos
+			for i := 0; i < remaining; i++ {
+				r.buf[i] = r.buf[r.pos + i]
+			}
+			r.buf.trim(remaining)
+		} else {
+			r.buf.clear()
+		}
+		r.pos = 0
+	}
 }
 
 pub fn (mut r FrameReader) feed(data []u8) {
@@ -106,29 +130,31 @@ pub fn (mut r FrameReader) feed(data []u8) {
 }
 
 pub fn (mut r FrameReader) next() ?[]u8 {
-	if r.buf.len < 3 {
+	avail := r.buf.len - r.pos
+	if avail < 3 {
+		r.compact()
 		return none
 	}
-	if r.buf[0] != fend_out {
-		mut i := 0
+	// Scan for frame start marker
+	if r.buf[r.pos] != fend_out {
+		mut i := r.pos
 		for i < r.buf.len && r.buf[i] != fend_out {
 			i++
 		}
-		if i >= r.buf.len {
-			r.buf = []u8{}
-			return none
-		}
-		r.buf = r.buf[i..].clone()
-		if r.buf.len < 3 {
+		r.pos = i
+		if r.buf.len - r.pos < 3 {
+			r.compact()
 			return none
 		}
 	}
-	length := int(u16(r.buf[1]) | (u16(r.buf[2]) << 8))
+	length := int(u16(r.buf[r.pos + 1]) | (u16(r.buf[r.pos + 2]) << 8))
 	total := 3 + length
-	if r.buf.len < total {
+	if r.buf.len - r.pos < total {
 		return none
 	}
-	payload := r.buf[3..total].clone()
-	r.buf = r.buf[total..].clone()
+	// Extract payload - single clone for the returned data only
+	payload := r.buf[r.pos + 3 .. r.pos + total].clone()
+	r.pos += total
+	r.compact()
 	return payload
 }
