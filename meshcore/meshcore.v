@@ -1,6 +1,7 @@
 module meshcore
 
 import time
+import sync
 
 // MeshCore is the top-level client, mirroring meshcore.py's MeshCore class.
 // It owns the connection, the frame reader (in a background thread), and the
@@ -13,6 +14,11 @@ pub mut:
 	running    bool
 	debug      bool
 	auto_fetch bool
+	// drain_lock serialises drain_messages() so overlapping MESSAGES_WAITING
+	// notifications can't run two concurrent drain loops (which would race on
+	// get_msg and deliver the same message twice).
+	drain_lock &sync.Mutex = sync.new_mutex()
+	draining   bool
 }
 
 // create_serial mirrors MeshCore.create_serial(): open, start dispatcher +
@@ -141,6 +147,48 @@ pub fn (mut mc MeshCore) get_msg(timeout_ms int) ?Event {
 		}
 	}
 	return none
+}
+
+// export_private_key asks the radio for its 64-byte expanded Ed25519 private
+// key (CMD_EXPORT_PRIVATE_KEY). Used to sign MQTT observer tokens. Returns an
+// error when the firmware was built without ENABLE_PRIVATE_KEY_EXPORT.
+// The key is returned to the caller only - never log or persist it.
+pub fn (mut mc MeshCore) export_private_key() ![]u8 {
+	mc.conn.write_frame(encode_export_private_key())!
+	result := chan Event{cap: 1}
+	cb := fn [result] (ev Event) {
+		select {
+			result <- ev {
+			}
+			else {
+			}
+		}
+	}
+	s1 := mc.dispatcher.subscribe(.private_key, cb)
+	s2 := mc.dispatcher.subscribe(.disabled, cb)
+	s3 := mc.dispatcher.subscribe(.error, cb)
+	defer {
+		mc.dispatcher.unsubscribe(s1)
+		mc.dispatcher.unsubscribe(s2)
+		mc.dispatcher.unsubscribe(s3)
+	}
+	deadline := time.now().add(5000 * time.millisecond)
+	for time.now() < deadline {
+		select {
+			ev := <-result {
+				if ev.typ == .private_key {
+					return ev.payload.data.clone()
+				}
+				if ev.typ == .disabled {
+					return error('private key export is disabled in this firmware')
+				}
+				return error('radio refused private key export (err ${ev.payload.err_code})')
+			}
+			300 * time.millisecond {
+			}
+		}
+	}
+	return error('timeout waiting for private key')
 }
 
 // send_msg sends a direct text message to a contact identified by the first
@@ -276,6 +324,23 @@ pub fn (mut mc MeshCore) start_auto_message_fetching() {
 }
 
 fn (mut mc MeshCore) drain_messages() {
+	// Single-drainer guard: if a drain loop is already running, don't start a
+	// second one. Overlapping drains race on get_msg() and can deliver the same
+	// CONTACT_MSG_RECV frame to the app twice (observed as duplicate turns).
+	mc.drain_lock.lock()
+	if mc.draining {
+		mc.drain_lock.unlock()
+		return
+	}
+	mc.draining = true
+	mc.drain_lock.unlock()
+
+	defer {
+		mc.drain_lock.lock()
+		mc.draining = false
+		mc.drain_lock.unlock()
+	}
+
 	for mc.running {
 		ev := mc.get_msg(4000) or { break }
 		if ev.typ == .no_more_msgs || ev.typ == .error {

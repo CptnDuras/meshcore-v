@@ -106,6 +106,11 @@ pub fn encode_device_query(app_target_ver u8) []u8 {
 	return [cmd_device_query, app_target_ver]
 }
 
+// CMD_EXPORT_PRIVATE_KEY: [23]
+pub fn encode_export_private_key() []u8 {
+	return [cmd_export_private_key]
+}
+
 // CMD_SYNC_NEXT_MESSAGE: [10]
 pub fn encode_sync_next_message() []u8 {
 	return [cmd_sync_next_message]

@@ -145,3 +145,7 @@ fn test_hex_to_bytes_roundtrip() {
 	_ := hex_to_bytes('')
 	assert true
 }
+
+fn test_encode_export_private_key() {
+	assert encode_export_private_key() == [u8(23)]
+}

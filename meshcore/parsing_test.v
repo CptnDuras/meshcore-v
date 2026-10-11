@@ -257,3 +257,52 @@ fn test_parse_new_advert_as_new_contact() {
 	assert ev.payload.pubkey_prefix == 'aabbccddeeff'
 	assert ev.payload.adv_name == 'NewNode'
 }
+
+// --- LOG_RX_DATA (0x88): every packet the radio heard, for observer/MQTT use ---
+// layout: [0x88, snr*4 (i8), rssi (i8), raw packet...]
+fn test_parse_log_rx_data() {
+	// snr = 22/4 = 5.5 dB, rssi = -97 dBm (0x9F), 4 raw bytes
+	b := [u8(0x88), u8(22), u8(0x9F), u8(0x11), u8(0x22), u8(0x33), u8(0x44)]
+	ev := parse_frame(b)
+	assert ev.typ == .log_rx_data
+	assert ev.payload.snr == 5.5
+	assert ev.payload.rssi == -97.0
+	assert ev.payload.data == [u8(0x11), 0x22, 0x33, 0x44]
+}
+
+fn test_parse_log_rx_data_negative_snr() {
+	// snr byte 0xF6 = -10 -> -2.5 dB
+	ev := parse_frame([u8(0x88), u8(0xF6), u8(0xB0), u8(0x01)])
+	assert ev.typ == .log_rx_data
+	assert ev.payload.snr == -2.5
+	assert ev.payload.rssi == -80.0
+}
+
+fn test_parse_log_rx_data_truncated() {
+	// header only, no packet bytes -> still an event with empty data; shorter -> raw
+	ev := parse_frame([u8(0x88), u8(4), u8(0xA0)])
+	assert ev.typ == .log_rx_data
+	assert ev.payload.data.len == 0
+	assert parse_frame([u8(0x88), u8(4)]).typ == .raw
+}
+
+// --- EXPORT_PRIVATE_KEY: 64-byte expanded Ed25519 key, or DISABLED ---
+fn test_parse_private_key() {
+	mut b := [u8(14)]
+	for i in 0 .. 64 {
+		b << u8(i)
+	}
+	ev := parse_frame(b)
+	assert ev.typ == .private_key
+	assert ev.payload.data.len == 64
+	assert ev.payload.data[63] == 63
+}
+
+fn test_parse_private_key_short_is_raw() {
+	assert parse_frame([u8(14), u8(1), u8(2)]).typ == .raw
+}
+
+fn test_parse_disabled() {
+	ev := parse_frame([u8(15)])
+	assert ev.typ == .disabled
+}

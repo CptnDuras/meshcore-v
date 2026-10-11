@@ -23,6 +23,9 @@ pub enum EventType {
 	channel_msg_recv
 	channel_data_recv
 	no_more_msgs
+	log_rx_data // raw packet heard (observer feed)
+	private_key
+	disabled
 	msg_sent
 	messages_waiting
 	// network / push
@@ -74,7 +77,8 @@ pub mut:
 	last_advert   u32
 	contact_count u32 // from CONTACT_START
 	// signal quality (from V3 message frames): SNR in dB (0 if unknown)
-	snr f64
+	snr  f64
+	rssi f64
 	// msg_sent
 	expected_ack      string
 	suggested_timeout u32

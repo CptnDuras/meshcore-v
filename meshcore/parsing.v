@@ -10,6 +10,7 @@ pub const cmd_set_advert_name = u8(8)
 pub const cmd_add_update_contact = u8(9)
 pub const cmd_sync_next_message = u8(10)
 pub const cmd_device_query = u8(22)
+pub const cmd_export_private_key = u8(23)
 pub const cmd_send_channel_data = u8(0x3E) // binary channel datagram (SEND_CHANNEL_DATA)
 
 // --- Response codes (radio -> app) ---
@@ -24,6 +25,8 @@ pub const resp_contact_msg_recv = u8(7)
 pub const resp_channel_msg_recv = u8(8)
 pub const resp_no_more_messages = u8(10)
 pub const resp_device_info = u8(13)
+pub const resp_private_key = u8(14) // reply to CMD_EXPORT_PRIVATE_KEY (64-byte expanded key)
+pub const resp_disabled = u8(15) // feature compiled out of the firmware
 pub const resp_contact_msg_recv_v3 = u8(16)
 pub const resp_channel_msg_recv_v3 = u8(17)
 pub const resp_channel_data_recv = u8(0x1B) // inbound binary channel datagram
@@ -33,6 +36,7 @@ pub const push_advert = u8(0x80)
 pub const push_path_updated = u8(0x81)
 pub const push_send_confirmed = u8(0x82)
 pub const push_msg_waiting = u8(0x83)
+pub const push_log_rx_data = u8(0x88) // every packet heard: snr*4, rssi, raw bytes
 pub const push_new_advert = u8(0x8A) // unknown node advertised -> NEW_CONTACT
 
 // --- little-endian + string helpers ---
@@ -121,6 +125,35 @@ pub fn parse_frame(b []u8) Event {
 		}
 		resp_device_info {
 			return parse_device_info(b)
+		}
+		push_log_rx_data {
+			return parse_log_rx_data(b)
+		}
+		resp_private_key {
+			if b.len < 65 {
+				return Event{
+					typ: .raw
+					payload: Payload{
+						code: code
+						raw_hex: b.hex()
+					}
+				}
+			}
+			return Event{
+				typ: .private_key
+				payload: Payload{
+					code: code
+					data: b[1..65].clone()
+				}
+			}
+		}
+		resp_disabled {
+			return Event{
+				typ: .disabled
+				payload: Payload{
+					code: code
+				}
+			}
 		}
 		resp_sent {
 			return parse_sent(b)
@@ -434,4 +467,27 @@ fn trim_nul(b []u8) string {
 fn snr_from_byte(v u8) f64 {
 	sv := if v < 128 { int(v) } else { int(v) - 256 }
 	return f64(sv) / 4.0
+}
+
+// LOG_RX_DATA (0x88): [code, snr*4 (i8), rssi (i8), raw packet...]
+// The raw bytes are the over-the-air MeshCore packet exactly as heard.
+fn parse_log_rx_data(b []u8) Event {
+	if b.len < 3 {
+		return Event{
+			typ: .raw
+			payload: Payload{
+				code: b[0]
+				raw_hex: b.hex()
+			}
+		}
+	}
+	return Event{
+		typ: .log_rx_data
+		payload: Payload{
+			code: b[0]
+			snr: f64(i8(b[1])) / 4.0
+			rssi: f64(i8(b[2]))
+			data: b[3..].clone()
+		}
+	}
 }
