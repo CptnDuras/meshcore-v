@@ -75,6 +75,8 @@ pub mut:
 	adv_name      string // node friendly name
 	contact_type  u8
 	last_advert   u32
+	adv_lat       f64 // the node's own advertised position (0, 0 when it gave none)
+	adv_lon       f64
 	contact_count u32 // from CONTACT_START
 	// signal quality (from V3 message frames): SNR in dB (0 if unknown)
 	snr  f64

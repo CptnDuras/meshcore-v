@@ -442,6 +442,11 @@ fn parse_contact(b []u8) Event {
 	if b.len >= la_off + 4 {
 		p.last_advert = le_u32(b, la_off)
 	}
+	// adv_lat, adv_lon: i32 millionths of a degree at offsets 136 and 140 (0, 0 when the node gave no position)
+	if b.len >= la_off + 12 {
+		p.adv_lat = f64(i32(le_u32(b, la_off + 4))) / 1000000.0
+		p.adv_lon = f64(i32(le_u32(b, la_off + 8))) / 1000000.0
+	}
 	mut attrs := map[string]string{}
 	attrs['pubkey_prefix'] = p.pubkey_prefix
 	return Event{

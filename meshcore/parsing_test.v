@@ -306,3 +306,21 @@ fn test_parse_disabled() {
 	ev := parse_frame([u8(15)])
 	assert ev.typ == .disabled
 }
+
+fn test_parse_contact_position() {
+	mut frame := build_contact_frame('4b81424f7106', u8(2), 'Garrison', u32(1))
+	n := frame.len
+	lat := 44381858 // 44.381858
+	lon := -106817928 // -106.817928, stored as a two's-complement u32
+	ul := u32(lon)
+	for i in 0 .. 4 {
+		frame[n - 12 + i] = u8((u32(lat) >> (8 * i)) & 0xFF)
+		frame[n - 8 + i] = u8((ul >> (8 * i)) & 0xFF)
+	}
+	p := parse_frame(frame).payload
+	assert p.adv_lat > 44.381857 && p.adv_lat < 44.381859
+	assert p.adv_lon > -106.817929 && p.adv_lon < -106.817927
+	// no position given: zero, not garbage
+	q := parse_frame(build_contact_frame('4b81424f7106', u8(2), 'Nowhere', u32(1))).payload
+	assert q.adv_lat == 0 && q.adv_lon == 0
+}
