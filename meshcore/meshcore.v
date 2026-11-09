@@ -210,6 +210,12 @@ pub fn (mut mc MeshCore) send_trace_path(tag u32, hash_size int, hashes []u8) !E
 	return mc.wait_for_event(.msg_sent, 5000) or { return error('timeout waiting for SENT') }
 }
 
+// set_path_hash_mode sets how many bytes (mode + 1) of each repeater's key go into the paths of packets this radio sends. The firmware saves it.
+pub fn (mut mc MeshCore) set_path_hash_mode(mode u8) ! {
+	mc.conn.write_frame(encode_set_path_hash_mode(mode)!)!
+	mc.wait_for_event(.ok, 5000) or { return error('timeout waiting for OK') }
+}
+
 // send_discover asks every repeater that hears us directly to answer. The answers arrive over the next few seconds as .discover_resp events
 // carrying this tag, since each node waits a random moment before replying.
 pub fn (mut mc MeshCore) send_discover(tag u32) ! {

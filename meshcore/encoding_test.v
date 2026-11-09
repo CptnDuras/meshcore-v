@@ -181,3 +181,10 @@ fn test_encode_send_discover() {
 		0, 0, 0]
 	assert encode_send_discover(1, 0x04, false)[1] == u8(0x80)
 }
+
+fn test_encode_set_path_hash_mode() {
+	assert encode_set_path_hash_mode(1)! == [u8(61), 0, 1]
+	if _ := encode_set_path_hash_mode(3) {
+		assert false
+	}
+}

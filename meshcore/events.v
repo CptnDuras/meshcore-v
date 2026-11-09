@@ -63,6 +63,8 @@ pub mut:
 	fw_version   string
 	fw_build     string
 	firmware_ver u8
+	// device_info: the radio's path hash mode, 0 / 1 / 2 for 1 / 2 / 3 byte repeater names in the paths of packets it sends; -1 if the firmware does not say
+	path_hash_mode int
 	// messages
 	pubkey_prefix string
 	channel_idx   u8

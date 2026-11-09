@@ -189,6 +189,15 @@ pub fn encode_send_discover(tag u32, filter u8, prefix_only bool) []u8 {
 	return p
 }
 
+// CMD_SET_PATH_HASH_MODE (61): [61, 0, mode]. Mode 0, 1 or 2 puts 1, 2 or 3 bytes of each repeater's key in the path of the packets this radio
+// sends; the firmware refuses anything higher and keeps the setting across restarts.
+pub fn encode_set_path_hash_mode(mode u8) ![]u8 {
+	if mode > 2 {
+		return error('path hash mode must be 0, 1 or 2')
+	}
+	return [cmd_set_path_hash_mode, u8(0), mode]
+}
+
 // CMD_SEND_CHANNEL_DATA (0x3E): binary channel datagram. Layout:
 //   [0]=0x3E [1]=channel_idx [2]=path_len(0xFF=flood, no path bytes follow)
 //   [3..5]=data_type(u16 LITTLE-endian) [5..]=binary payload (<= ~163 bytes)

@@ -13,6 +13,7 @@ pub const cmd_device_query = u8(22)
 pub const cmd_export_private_key = u8(23)
 pub const cmd_send_channel_data = u8(0x3E) // binary channel datagram (SEND_CHANNEL_DATA)
 pub const cmd_send_trace_path = u8(36) // trace a direct path hop by hop (SEND_TRACE_PATH)
+pub const cmd_set_path_hash_mode = u8(61) // how many bytes of each repeater's key go into the paths of packets this radio sends (SET_PATH_HASH_MODE)
 pub const cmd_send_control_data = u8(55) // zero-hop control packet, such as a DISCOVER request (SEND_CONTROL_DATA)
 
 // --- Response codes (radio -> app) ---
@@ -283,11 +284,13 @@ fn parse_device_info(b []u8) Event {
 	return Event{
 		typ:     .device_info
 		payload: Payload{
-			code:         b[0]
-			firmware_ver: b[1]
-			fw_build:     null_str(b, 8, 12)
-			model:        null_str(b, 20, 40)
-			fw_version:   null_str(b, 60, 20)
+			code:           b[0]
+			firmware_ver:   b[1]
+			fw_build:       null_str(b, 8, 12)
+			model:          null_str(b, 20, 40)
+			fw_version:     null_str(b, 60, 20)
+			// byte 80 says whether the radio repeats, byte 81 is the path hash mode (0, 1, 2 for 1, 2, 3 byte names); older firmware stops before them
+			path_hash_mode: if b.len > 81 { int(b[81]) } else { -1 }
 		}
 	}
 }

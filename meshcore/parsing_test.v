@@ -416,3 +416,12 @@ fn test_parse_control_data_other_is_raw() {
 	assert parse_frame(hx('8e16a600' + '81040d0c0b0a00000000' + '00')).typ == .raw
 	assert parse_frame(hx('8e16a600' + '92f60d0c0b0a')).typ == .raw
 }
+
+fn test_parse_device_info_path_hash_mode() {
+	mut b := []u8{len: 82, init: 0}
+	b[0] = u8(13)
+	b[81] = u8(1) // 2 byte names
+	assert parse_frame(b).payload.path_hash_mode == 1
+	// firmware that stops after the version string does not say
+	assert parse_frame(b[..80]).payload.path_hash_mode == -1
+}
