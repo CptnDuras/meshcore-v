@@ -210,6 +210,13 @@ pub fn (mut mc MeshCore) send_trace_path(tag u32, hash_size int, hashes []u8) !E
 	return mc.wait_for_event(.msg_sent, 5000) or { return error('timeout waiting for SENT') }
 }
 
+// send_discover asks every repeater that hears us directly to answer. The answers arrive over the next few seconds as .discover_resp events
+// carrying this tag, since each node waits a random moment before replying.
+pub fn (mut mc MeshCore) send_discover(tag u32) ! {
+	mc.conn.write_frame(encode_send_discover(tag, u8(1) << adv_type_repeater, true))!
+	mc.wait_for_event(.ok, 5000) or { return error('timeout waiting for OK') }
+}
+
 // send_chan_msg sends a text message to a channel (0 = public).
 pub fn (mut mc MeshCore) send_chan_msg(channel_idx u8, text string) !Event {
 	ts := u32(time.now().unix())

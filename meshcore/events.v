@@ -23,8 +23,9 @@ pub enum EventType {
 	channel_msg_recv
 	channel_data_recv
 	no_more_msgs
-	log_rx_data // raw packet heard (observer feed)
-	trace_data  // a trace sent with send_trace_path came back
+	log_rx_data   // raw packet heard (observer feed)
+	trace_data    // a trace sent with send_trace_path came back
+	discover_resp // a node heard a send_discover request and answered it
 	private_key
 	disabled
 	msg_sent
@@ -89,6 +90,12 @@ pub mut:
 	trace_flags  u8
 	trace_hashes []u8
 	trace_snrs   []f64
+	// discover_resp: the node's type and key (8 or 32 bytes), the tag of the request it answers, and the SNR it heard the request with
+	// (snr and rssi hold how this radio heard the reply)
+	discover_type u8
+	discover_snr  f64
+	discover_tag  u32
+	discover_key  []u8
 	// msg_sent
 	expected_ack      string
 	suggested_timeout u32

@@ -176,6 +176,19 @@ pub fn encode_send_trace_path(tag u32, hash_size int, hashes []u8) ![]u8 {
 	return p
 }
 
+// CMD_SEND_CONTROL_DATA (55) carrying a DISCOVER request: [55, 0x80 | prefix_only, filter, tag(u32 LE), since(u32 LE)]. It goes out zero-hop, so
+// only nodes that hear us directly answer; filter has bit (1 << node type) set for each kind wanted (repeaters are type 2, so 0x04), and since
+// is 0 to ask every node. Answered with OK, and then a DISCOVER response event per node, each carrying the tag.
+pub fn encode_send_discover(tag u32, filter u8, prefix_only bool) []u8 {
+	mut p := []u8{}
+	p << cmd_send_control_data
+	p << (ctl_discover_req | if prefix_only { u8(1) } else { u8(0) })
+	p << filter
+	put_u32_le(mut p, tag)
+	put_u32_le(mut p, 0)
+	return p
+}
+
 // CMD_SEND_CHANNEL_DATA (0x3E): binary channel datagram. Layout:
 //   [0]=0x3E [1]=channel_idx [2]=path_len(0xFF=flood, no path bytes follow)
 //   [3..5]=data_type(u16 LITTLE-endian) [5..]=binary payload (<= ~163 bytes)

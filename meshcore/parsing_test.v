@@ -397,3 +397,22 @@ fn test_parse_contact_with_a_path_longer_than_the_frame_is_ignored() {
 	// 63 hops of 2 bytes is 126 bytes, more than the 64 the frame holds
 	assert parse_frame(contact_frame(63 | (1 << 6), []u8{})).payload.out_path.len == 0
 }
+
+fn test_parse_control_data_discover_resp() {
+	// [0x8E, snr*4=22, rssi=-90, path_len=0, 0x92 (response from a repeater), their snr*4=-10, tag, 8 key bytes]
+	b := hx('8e16a600' + '92f6' + '0d0c0b0a' + '19e093d3475d1122')
+	ev := parse_frame(b)
+	assert ev.typ == .discover_resp
+	assert ev.payload.snr == 5.5
+	assert ev.payload.rssi == -90.0
+	assert ev.payload.discover_type == adv_type_repeater
+	assert ev.payload.discover_snr == -2.5
+	assert ev.payload.discover_tag == u32(0x0a0b0c0d)
+	assert ev.payload.discover_key == [u8(0x19), 0xe0, 0x93, 0xd3, 0x47, 0x5d, 0x11, 0x22]
+}
+
+fn test_parse_control_data_other_is_raw() {
+	// a request heard from someone else (0x81), and a response too short to hold a key
+	assert parse_frame(hx('8e16a600' + '81040d0c0b0a00000000' + '00')).typ == .raw
+	assert parse_frame(hx('8e16a600' + '92f60d0c0b0a')).typ == .raw
+}

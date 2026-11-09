@@ -13,6 +13,7 @@ pub const cmd_device_query = u8(22)
 pub const cmd_export_private_key = u8(23)
 pub const cmd_send_channel_data = u8(0x3E) // binary channel datagram (SEND_CHANNEL_DATA)
 pub const cmd_send_trace_path = u8(36) // trace a direct path hop by hop (SEND_TRACE_PATH)
+pub const cmd_send_control_data = u8(55) // zero-hop control packet, such as a DISCOVER request (SEND_CONTROL_DATA)
 
 // --- Response codes (radio -> app) ---
 pub const resp_ok = u8(0)
@@ -40,6 +41,12 @@ pub const push_msg_waiting = u8(0x83)
 pub const push_log_rx_data = u8(0x88) // every packet heard: snr*4, rssi, raw bytes
 pub const push_trace_data = u8(0x89) // a trace came back: the hashes it was sent along and the SNR each hop heard it with
 pub const push_new_advert = u8(0x8A) // unknown node advertised -> NEW_CONTACT
+pub const push_control_data = u8(0x8E) // a zero-hop control packet was heard: the SNR and RSSI it arrived with, then its payload
+
+// control payload types (high nibble of the first payload byte)
+pub const ctl_discover_req = u8(0x80)
+pub const ctl_discover_resp = u8(0x90)
+pub const adv_type_repeater = u8(2)
 
 // --- little-endian + string helpers ---
 fn le_u32(b []u8, off int) u32 {
@@ -133,6 +140,9 @@ pub fn parse_frame(b []u8) Event {
 		}
 		push_trace_data {
 			return parse_trace_data(b)
+		}
+		push_control_data {
+			return parse_control_data(b)
 		}
 		resp_private_key {
 			if b.len < 65 {
@@ -509,6 +519,34 @@ fn parse_log_rx_data(b []u8) Event {
 			snr:  f64(i8(b[1])) / 4.0
 			rssi: f64(i8(b[2]))
 			data: b[3..].clone()
+		}
+	}
+}
+
+// CONTROL_DATA (0x8E): [code, snr*4 (i8), rssi (i8), path_len, payload...]. A DISCOVER response (payload[0] high nibble 0x90, low nibble the node type)
+// reads [type, their snr*4 (i8), tag(4), pubkey(8 when the request asked for prefixes, else 32)]: their snr is what that node heard our request
+// with, and the frame's own snr is what we heard its reply with. Any other control packet comes back raw.
+fn parse_control_data(b []u8) Event {
+	raw := Event{
+		typ:     .raw
+		payload: Payload{
+			code:    b[0]
+			raw_hex: b.hex()
+		}
+	}
+	if b.len < 4 + 6 + 8 || b[4] & 0xF0 != ctl_discover_resp {
+		return raw
+	}
+	return Event{
+		typ:     .discover_resp
+		payload: Payload{
+			code:          b[0]
+			snr:           f64(i8(b[1])) / 4.0
+			rssi:          f64(i8(b[2]))
+			discover_type: b[4] & 0x0F
+			discover_snr:  f64(i8(b[5])) / 4.0
+			discover_tag:  le_u32(b, 6)
+			discover_key:  b[10..].clone()
 		}
 	}
 }

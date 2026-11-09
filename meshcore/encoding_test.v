@@ -174,3 +174,10 @@ fn test_encode_send_trace_path_refuses_bad_input() {
 		assert false
 	}
 }
+
+fn test_encode_send_discover() {
+	// a repeater-only request (bit 2) that asks for key prefixes: control byte 0x81, filter 0x04, tag, since 0
+	assert encode_send_discover(0x04030201, 0x04, true) == [u8(55), 0x81, 0x04, 1, 2, 3, 4, 0,
+		0, 0, 0]
+	assert encode_send_discover(1, 0x04, false)[1] == u8(0x80)
+}
