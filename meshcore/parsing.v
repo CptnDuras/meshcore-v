@@ -66,7 +66,7 @@ fn null_str(b []u8, off int, maxlen int) string {
 pub fn parse_frame(b []u8) Event {
 	if b.len == 0 {
 		return Event{
-			typ: .raw
+			typ:     .raw
 			payload: Payload{}
 		}
 	}
@@ -74,7 +74,7 @@ pub fn parse_frame(b []u8) Event {
 	match code {
 		resp_ok {
 			return Event{
-				typ: .ok
+				typ:     .ok
 				payload: Payload{
 					code: code
 				}
@@ -83,11 +83,11 @@ pub fn parse_frame(b []u8) Event {
 		resp_err {
 			ec := if b.len > 1 { b[1] } else { u8(0) }
 			return Event{
-				typ: .error
+				typ:     .error
 				payload: Payload{
-					code: code
+					code:     code
 					err_code: ec
-					reason: 'err_code ${ec}'
+					reason:   'err_code ${ec}'
 				}
 			}
 		}
@@ -97,9 +97,9 @@ pub fn parse_frame(b []u8) Event {
 		resp_contact_start {
 			cnt := if b.len >= 5 { le_u32(b, 1) } else { u32(0) }
 			return Event{
-				typ: .contact_start
+				typ:     .contact_start
 				payload: Payload{
-					code: code
+					code:          code
 					contact_count: cnt
 				}
 			}
@@ -109,7 +109,7 @@ pub fn parse_frame(b []u8) Event {
 		}
 		resp_contact_end {
 			return Event{
-				typ: .contact_end
+				typ:     .contact_end
 				payload: Payload{
 					code: code
 				}
@@ -120,8 +120,8 @@ pub fn parse_frame(b []u8) Event {
 			// node advertised. Surface as new_contact so callers can auto-add.
 			parsed := parse_contact(b)
 			return Event{
-				typ: .new_contact
-				payload: parsed.payload
+				typ:        .new_contact
+				payload:    parsed.payload
 				attributes: parsed.attributes
 			}
 		}
@@ -137,15 +137,15 @@ pub fn parse_frame(b []u8) Event {
 		resp_private_key {
 			if b.len < 65 {
 				return Event{
-					typ: .raw
+					typ:     .raw
 					payload: Payload{
-						code: code
+						code:    code
 						raw_hex: b.hex()
 					}
 				}
 			}
 			return Event{
-				typ: .private_key
+				typ:     .private_key
 				payload: Payload{
 					code: code
 					data: b[1..65].clone()
@@ -154,7 +154,7 @@ pub fn parse_frame(b []u8) Event {
 		}
 		resp_disabled {
 			return Event{
-				typ: .disabled
+				typ:     .disabled
 				payload: Payload{
 					code: code
 				}
@@ -180,7 +180,7 @@ pub fn parse_frame(b []u8) Event {
 		}
 		resp_no_more_messages {
 			return Event{
-				typ: .no_more_msgs
+				typ:     .no_more_msgs
 				payload: Payload{
 					code: code
 				}
@@ -188,7 +188,7 @@ pub fn parse_frame(b []u8) Event {
 		}
 		push_msg_waiting {
 			return Event{
-				typ: .messages_waiting
+				typ:     .messages_waiting
 				payload: Payload{
 					code: code
 				}
@@ -202,16 +202,16 @@ pub fn parse_frame(b []u8) Event {
 				}
 			}
 			return Event{
-				typ: .advertisement
+				typ:     .advertisement
 				payload: Payload{
-					code: code
+					code:       code
 					public_key: key.hex()
 				}
 			}
 		}
 		push_send_confirmed {
 			return Event{
-				typ: .ack
+				typ:     .ack
 				payload: Payload{
 					code: code
 				}
@@ -219,9 +219,9 @@ pub fn parse_frame(b []u8) Event {
 		}
 		else {
 			return Event{
-				typ: .raw
+				typ:     .raw
 				payload: Payload{
-					code: code
+					code:    code
 					raw_hex: b.hex()
 				}
 			}
@@ -232,9 +232,9 @@ pub fn parse_frame(b []u8) Event {
 fn parse_self_info(b []u8) Event {
 	if b.len < 58 {
 		return Event{
-			typ: .raw
+			typ:     .raw
 			payload: Payload{
-				code: b[0]
+				code:    b[0]
 				raw_hex: b.hex()
 			}
 		}
@@ -244,18 +244,18 @@ fn parse_self_info(b []u8) Event {
 		key << b[i]
 	}
 	return Event{
-		typ: .self_info
+		typ:     .self_info
 		payload: Payload{
-			code: b[0]
-			adv_type: b[1]
-			tx_power: b[2]
+			code:       b[0]
+			adv_type:   b[1]
+			tx_power:   b[2]
 			max_tx_pow: b[3]
 			public_key: key.hex()
 			radio_freq: f64(le_u32(b, 48)) / 1000.0
-			radio_bw: f64(le_u32(b, 52)) / 1000.0
-			radio_sf: b[56]
-			radio_cr: b[57]
-			name: null_str(b, 58, b.len - 58)
+			radio_bw:   f64(le_u32(b, 52)) / 1000.0
+			radio_sf:   b[56]
+			radio_cr:   b[57]
+			name:       null_str(b, 58, b.len - 58)
 		}
 	}
 }
@@ -263,21 +263,21 @@ fn parse_self_info(b []u8) Event {
 fn parse_device_info(b []u8) Event {
 	if b.len < 8 {
 		return Event{
-			typ: .raw
+			typ:     .raw
 			payload: Payload{
-				code: b[0]
+				code:    b[0]
 				raw_hex: b.hex()
 			}
 		}
 	}
 	return Event{
-		typ: .device_info
+		typ:     .device_info
 		payload: Payload{
-			code: b[0]
+			code:         b[0]
 			firmware_ver: b[1]
-			fw_build: null_str(b, 8, 12)
-			model: null_str(b, 20, 40)
-			fw_version: null_str(b, 60, 20)
+			fw_build:     null_str(b, 8, 12)
+			model:        null_str(b, 20, 40)
+			fw_version:   null_str(b, 60, 20)
 		}
 	}
 }
@@ -291,10 +291,10 @@ fn parse_sent(b []u8) Event {
 	}
 	timeout := if b.len >= 10 { le_u32(b, 6) } else { u32(0) }
 	return Event{
-		typ: .msg_sent
+		typ:     .msg_sent
 		payload: Payload{
-			code: b[0]
-			expected_ack: ack.hex()
+			code:              b[0]
+			expected_ack:      ack.hex()
 			suggested_timeout: timeout
 		}
 	}
@@ -338,8 +338,8 @@ fn parse_contact_msg(b []u8, v3 bool) Event {
 	mut attrs := map[string]string{}
 	attrs['pubkey_prefix'] = p.pubkey_prefix
 	return Event{
-		typ: .contact_msg_recv
-		payload: p
+		typ:        .contact_msg_recv
+		payload:    p
 		attributes: attrs
 	}
 }
@@ -375,7 +375,7 @@ fn parse_channel_msg(b []u8, v3 bool) Event {
 		p.text = b[i..].bytestr()
 	}
 	return Event{
-		typ: .channel_msg_recv
+		typ:     .channel_msg_recv
 		payload: p
 	}
 }
@@ -408,7 +408,7 @@ fn parse_channel_data(b []u8) Event {
 		p.data = b[9..end].clone()
 	}
 	return Event{
-		typ: .channel_data_recv
+		typ:     .channel_data_recv
 		payload: p
 	}
 }
@@ -428,7 +428,7 @@ fn parse_contact(b []u8) Event {
 		p.pubkey_prefix = b[1..7].hex()
 	} else {
 		return Event{
-			typ: .contact
+			typ:     .contact
 			payload: p
 		}
 	}
@@ -455,8 +455,8 @@ fn parse_contact(b []u8) Event {
 	mut attrs := map[string]string{}
 	attrs['pubkey_prefix'] = p.pubkey_prefix
 	return Event{
-		typ: .contact
-		payload: p
+		typ:        .contact
+		payload:    p
 		attributes: attrs
 	}
 }
@@ -484,18 +484,18 @@ fn snr_from_byte(v u8) f64 {
 fn parse_log_rx_data(b []u8) Event {
 	if b.len < 3 {
 		return Event{
-			typ: .raw
+			typ:     .raw
 			payload: Payload{
-				code: b[0]
+				code:    b[0]
 				raw_hex: b.hex()
 			}
 		}
 	}
 	return Event{
-		typ: .log_rx_data
+		typ:     .log_rx_data
 		payload: Payload{
 			code: b[0]
-			snr: f64(i8(b[1])) / 4.0
+			snr:  f64(i8(b[1])) / 4.0
 			rssi: f64(i8(b[2]))
 			data: b[3..].clone()
 		}
@@ -507,9 +507,9 @@ fn parse_log_rx_data(b []u8) Event {
 // with; the final byte is what this radio heard it with.
 fn parse_trace_data(b []u8) Event {
 	raw := Event{
-		typ: .raw
+		typ:     .raw
 		payload: Payload{
-			code: b[0]
+			code:    b[0]
 			raw_hex: b.hex()
 		}
 	}
@@ -527,14 +527,14 @@ fn parse_trace_data(b []u8) Event {
 		snrs << f64(i8(b[12 + hash_bytes + i])) / 4.0
 	}
 	return Event{
-		typ: .trace_data
+		typ:     .trace_data
 		payload: Payload{
-			code: b[0]
-			trace_tag: le_u32(b, 4)
-			trace_flags: b[3]
+			code:         b[0]
+			trace_tag:    le_u32(b, 4)
+			trace_flags:  b[3]
 			trace_hashes: b[12..12 + hash_bytes].clone()
-			trace_snrs: snrs
-			snr: f64(i8(b[12 + hash_bytes + hops])) / 4.0
+			trace_snrs:   snrs
+			snr:          f64(i8(b[12 + hash_bytes + hops])) / 4.0
 		}
 	}
 }

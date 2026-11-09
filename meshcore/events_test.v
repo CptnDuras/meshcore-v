@@ -136,7 +136,8 @@ fn test_unsubscribe_stops_delivery() {
 		_ := <-got {
 			fired = true
 		}
-		else {}
+		else {
+		}
 	}
 	assert fired == false, 'callback fired after unsubscribe'
 }

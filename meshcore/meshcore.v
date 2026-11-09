@@ -25,7 +25,7 @@ pub mut:
 // reader loop, send appstart, and return the ready client.
 pub fn create_serial(port string, baud int, debug bool) !&MeshCore {
 	mut mc := &MeshCore{
-		conn: SerialConnection{
+		conn:  SerialConnection{
 			port: port
 			baud: baud
 		}
@@ -120,7 +120,7 @@ pub fn (mut mc MeshCore) get_msg(timeout_ms int) ?Event {
 	// racing three short waits is overkill — instead wait on a small window
 	// and let the reader dispatch; we subscribe to all three via match.
 	deadline := time.now().add(timeout_ms * time.millisecond)
-	result := chan Event{ cap: 1 }
+	result := chan Event{cap: 1}
 	cb := fn [result] (ev Event) {
 		select {
 			result <- ev {
@@ -260,8 +260,8 @@ pub fn (mut mc MeshCore) accept_contact(p Payload) !Event {
 // each carrying pubkey_prefix + adv_name. `since` (lastmod) can limit the sync;
 // pass 0 for all contacts.
 pub fn (mut mc MeshCore) get_contacts(since u32, timeout_ms int) ![]Payload {
-	collected := chan Payload{ cap: 256 }
-	done := chan bool{ cap: 1 }
+	collected := chan Payload{cap: 256}
+	done := chan bool{cap: 1}
 	on_contact := fn [collected] (ev Event) {
 		select {
 			collected <- ev.payload {

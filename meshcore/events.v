@@ -24,7 +24,7 @@ pub enum EventType {
 	channel_data_recv
 	no_more_msgs
 	log_rx_data // raw packet heard (observer feed)
-	trace_data // a trace sent with send_trace_path came back
+	trace_data  // a trace sent with send_trace_path came back
 	private_key
 	disabled
 	msg_sent
@@ -133,7 +133,7 @@ mut:
 	mu      &sync.Mutex = sync.new_mutex()
 	subs    []Subscription
 	next_id int
-	queue   chan Event = chan Event{ cap: 128 }
+	queue   chan Event = chan Event{cap: 128}
 	running bool
 }
 
@@ -197,11 +197,11 @@ pub fn (mut d EventDispatcher) subscribe_filtered(event_type EventType, cb fn (E
 	defer { d.mu.unlock() }
 	d.next_id++
 	s := Subscription{
-		id: d.next_id
+		id:         d.next_id
 		event_type: event_type
-		match_all: false
-		filters: filters.clone()
-		cb: cb
+		match_all:  false
+		filters:    filters.clone()
+		cb:         cb
 	}
 	d.subs << s
 	return s
@@ -225,7 +225,7 @@ pub fn (mut d EventDispatcher) stop() {
 // wait_for_event blocks until a matching event arrives or timeout elapses.
 // Mirrors events.py wait_for_event using a one-shot channel.
 pub fn (mut d EventDispatcher) wait_for_event(event_type EventType, filters map[string]string, timeout_ms int) ?Event {
-	result := chan Event{ cap: 1 }
+	result := chan Event{cap: 1}
 	// a subscription that pushes the first match into the channel
 	cb := fn [result] (ev Event) {
 		// non-blocking send; ignore if already delivered

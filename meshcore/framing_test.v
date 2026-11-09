@@ -89,7 +89,6 @@ fn test_reader_split_across_feeds() {
 	assert got == [u8(0x41), u8(0x42)]
 }
 
-
 // Memory stress test - verifies FrameReader doesn't leak with many frames.
 // Run with: v -g -cflags "-fsanitize=address" test meshcore/framing_test.v
 fn test_reader_many_frames_no_leak() {

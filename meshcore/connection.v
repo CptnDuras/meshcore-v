@@ -153,7 +153,7 @@ pub fn (mut r FrameReader) next() ?[]u8 {
 		return none
 	}
 	// Extract payload - single clone for the returned data only
-	payload := r.buf[r.pos + 3 .. r.pos + total].clone()
+	payload := r.buf[r.pos + 3..r.pos + total].clone()
 	r.pos += total
 	r.compact()
 	return payload
