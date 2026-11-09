@@ -149,3 +149,28 @@ fn test_hex_to_bytes_roundtrip() {
 fn test_encode_export_private_key() {
 	assert encode_export_private_key() == [u8(23)]
 }
+
+fn test_encode_send_trace_path() {
+	p := encode_send_trace_path(0x04030201, 1, [u8(0xAA), 0xBB, 0xAA])!
+	assert p == [u8(36), 1, 2, 3, 4, 0, 0, 0, 0, 0, 0xAA, 0xBB, 0xAA]
+	// the firmware ignores a trace shorter than one hash after the 10-byte header, so the frame is never shorter than that
+	assert p.len > 10
+}
+
+fn test_encode_send_trace_path_hash_sizes() {
+	assert encode_send_trace_path(1, 2, [u8(1), 2, 3, 4])![9] == u8(1)
+	assert encode_send_trace_path(1, 4, [u8(1), 2, 3, 4])![9] == u8(2)
+	assert encode_send_trace_path(1, 8, [u8(1), 2, 3, 4, 5, 6, 7, 8])![9] == u8(3)
+}
+
+fn test_encode_send_trace_path_refuses_bad_input() {
+	if _ := encode_send_trace_path(1, 3, [u8(1), 2, 3]) {
+		assert false
+	}
+	if _ := encode_send_trace_path(1, 2, [u8(1), 2, 3]) {
+		assert false
+	}
+	if _ := encode_send_trace_path(1, 1, []u8{}) {
+		assert false
+	}
+}

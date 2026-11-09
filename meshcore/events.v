@@ -24,6 +24,7 @@ pub enum EventType {
 	channel_data_recv
 	no_more_msgs
 	log_rx_data // raw packet heard (observer feed)
+	trace_data // a trace sent with send_trace_path came back
 	private_key
 	disabled
 	msg_sent
@@ -81,6 +82,12 @@ pub mut:
 	// signal quality (from V3 message frames): SNR in dB (0 if unknown)
 	snr  f64
 	rssi f64
+	// trace_data: the hashes the trace was sent along (back to back, trace_flags' low two bits say how many bytes each), the SNR in dB each hop
+	// heard it with, and the radio's own SNR for the last leg in snr
+	trace_tag    u32
+	trace_flags  u8
+	trace_hashes []u8
+	trace_snrs   []f64
 	// msg_sent
 	expected_ack      string
 	suggested_timeout u32

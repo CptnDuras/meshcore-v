@@ -203,6 +203,13 @@ pub fn (mut mc MeshCore) send_msg(pubkey_prefix_hex string, text string) !Event 
 	return mc.wait_for_event(.msg_sent, 5000) or { return error('timeout waiting for SENT') }
 }
 
+// send_trace_path sends a trace along the given repeaters (hashes back to back, hash_size bytes each) and returns the SENT reply, whose
+// suggested_timeout is how long the radio expects the trip to take. The result arrives later as a .trace_data event carrying the same tag.
+pub fn (mut mc MeshCore) send_trace_path(tag u32, hash_size int, hashes []u8) !Event {
+	mc.conn.write_frame(encode_send_trace_path(tag, hash_size, hashes)!)!
+	return mc.wait_for_event(.msg_sent, 5000) or { return error('timeout waiting for SENT') }
+}
+
 // send_chan_msg sends a text message to a channel (0 = public).
 pub fn (mut mc MeshCore) send_chan_msg(channel_idx u8, text string) !Event {
 	ts := u32(time.now().unix())

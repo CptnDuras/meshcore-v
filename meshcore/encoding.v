@@ -153,6 +153,29 @@ pub fn encode_send_channel_txt_msg(channel_idx u8, ts u32, text string) []u8 {
 	return p
 }
 
+// CMD_SEND_TRACE_PATH (36): [36, tag(u32 LE), auth(u32 LE), flags, hashes...]. flags' low two bits are the hash size (1 << bits bytes); each
+// repeater on the path whose hash matches the next entry adds the SNR it heard the packet with and passes it on. Answered with SENT (the tag
+// and a timeout), and later TRACE_DATA with the same tag. hash_size must be 1, 2, 4 or 8 and hashes a whole number of them.
+pub fn encode_send_trace_path(tag u32, hash_size int, hashes []u8) ![]u8 {
+	bits := match hash_size {
+		1 { u8(0) }
+		2 { u8(1) }
+		4 { u8(2) }
+		8 { u8(3) }
+		else { return error('trace hash size must be 1, 2, 4 or 8') }
+	}
+	if hashes.len == 0 || hashes.len % hash_size != 0 {
+		return error('trace path must be a whole number of ${hash_size}-byte hashes')
+	}
+	mut p := []u8{}
+	p << cmd_send_trace_path
+	put_u32_le(mut p, tag)
+	put_u32_le(mut p, 0) // auth code: repeaters do not check it
+	p << bits
+	p << hashes
+	return p
+}
+
 // CMD_SEND_CHANNEL_DATA (0x3E): binary channel datagram. Layout:
 //   [0]=0x3E [1]=channel_idx [2]=path_len(0xFF=flood, no path bytes follow)
 //   [3..5]=data_type(u16 LITTLE-endian) [5..]=binary payload (<= ~163 bytes)

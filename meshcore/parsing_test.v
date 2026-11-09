@@ -324,3 +324,33 @@ fn test_parse_contact_position() {
 	q := parse_frame(build_contact_frame('4b81424f7106', u8(2), 'Nowhere', u32(1))).payload
 	assert q.adv_lat == 0 && q.adv_lon == 0
 }
+
+fn test_parse_trace_data() {
+	// [0x89, 0, hash_bytes=3, flags=0, tag(4), auth(4), A B A, snr x3, final snr]: 1-byte hashes, SNRs 10, -2.5 and 7 dB, last leg -8.25 dB
+	b := hx('890003000d0c0b0a000000001122112' + '8f61c' + 'df')
+	ev := parse_frame(b)
+	assert ev.typ == .trace_data
+	assert ev.payload.trace_tag == u32(0x0a0b0c0d)
+	assert ev.payload.trace_hashes == [u8(0x11), 0x22, 0x11]
+	assert ev.payload.trace_snrs == [10.0, -2.5, 7.0]
+	assert ev.payload.snr == -8.25
+}
+
+fn test_parse_trace_data_wide_hashes() {
+	// flags 1 = 2-byte hashes: 4 hash bytes make two hops, so two SNR bytes follow
+	b := hx('890004010100000000000000' + 'aabbccdd' + '0408' + '10')
+	ev := parse_frame(b)
+	assert ev.typ == .trace_data
+	assert ev.payload.trace_flags == u8(1)
+	assert ev.payload.trace_hashes == [u8(0xaa), 0xbb, 0xcc, 0xdd]
+	assert ev.payload.trace_snrs == [1.0, 2.0]
+	assert ev.payload.snr == 4.0
+}
+
+fn test_parse_trace_data_truncated_is_raw() {
+	// says 3 hashes but the frame stops before the SNRs
+	assert parse_frame(hx('89000300010000000000000011221')).typ == .raw
+	assert parse_frame(hx('890003000100000000000000112211')).typ == .raw
+	// hash bytes that are not a whole number of 2-byte hashes
+	assert parse_frame(hx('890003010100000000000000112211040810')).typ == .raw
+}
