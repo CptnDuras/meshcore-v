@@ -436,6 +436,17 @@ fn parse_contact(b []u8) Event {
 	if b.len > 33 {
 		p.contact_type = b[33]
 	}
+	// the path the radio uses to reach this contact: path_len is hops in the low 6 bits and the hash size minus one in the high 2, and 0xFF means
+	// no path is known (the radio floods to it)
+	if b.len > 35 {
+		p.path_len = b[35]
+		if p.path_len != 0xFF {
+			n := int(p.path_len & 63) * (int(p.path_len >> 6) + 1)
+			if n <= 64 && b.len >= 36 + n {
+				p.out_path = b[36..36 + n].clone()
+			}
+		}
+	}
 	// adv_name: 32 bytes at offset 100 (1 + 32 + 1 + 1 + 1 + 64)
 	name_off := 100
 	if b.len >= name_off + 32 {

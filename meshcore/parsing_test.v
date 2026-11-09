@@ -354,3 +354,46 @@ fn test_parse_trace_data_truncated_is_raw() {
 	// hash bytes that are not a whole number of 2-byte hashes
 	assert parse_frame(hx('890003010100000000000000112211040810')).typ == .raw
 }
+
+// a CONTACT frame: code 3, key(32), type, flags, path_len, path(64), name(32), then the advert time and position
+fn contact_frame(path_len u8, path []u8) []u8 {
+	mut b := [u8(3)]
+	for i in 0 .. 32 {
+		b << u8(0x10 + i)
+	}
+	b << [u8(2), 0, path_len] // repeater, flags, path_len
+	mut p := path.clone()
+	for p.len < 64 {
+		p << u8(0)
+	}
+	b << p
+	b << 'Hill'.bytes()
+	for _ in 0 .. 28 {
+		b << u8(0)
+	}
+	b << [u8(0), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] // advert time, lat, lon, lastmod
+	return b
+}
+
+fn test_parse_contact_reads_its_path() {
+	// two 1-byte hops
+	ev := parse_frame(contact_frame(2, [u8(0xAA), 0xBB]))
+	assert ev.payload.path_len == 2
+	assert ev.payload.out_path == [u8(0xAA), 0xBB]
+	assert ev.payload.adv_name == 'Hill'
+	// two 2-byte hops: hash size - 1 in the high bits
+	ev2 := parse_frame(contact_frame(2 | (1 << 6), [u8(1), 2, 3, 4]))
+	assert ev2.payload.out_path == [u8(1), 2, 3, 4]
+}
+
+fn test_parse_contact_with_no_known_path() {
+	ev := parse_frame(contact_frame(0xFF, [u8(9), 9]))
+	assert ev.payload.path_len == 0xFF
+	assert ev.payload.out_path.len == 0
+	assert parse_frame(contact_frame(0, []u8{})).payload.out_path.len == 0
+}
+
+fn test_parse_contact_with_a_path_longer_than_the_frame_is_ignored() {
+	// 63 hops of 2 bytes is 126 bytes, more than the 64 the frame holds
+	assert parse_frame(contact_frame(63 | (1 << 6), []u8{})).payload.out_path.len == 0
+}
