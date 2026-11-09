@@ -73,6 +73,7 @@ pub mut:
 	data      []u8
 	data_type u16
 	// contacts (from CMD_GET_CONTACTS -> CONTACT frames)
+	out_path      []u8   // the repeaters, in order, the radio sends through to reach the contact (empty for none or unknown); path_len says how to read it
 	adv_name      string // node friendly name
 	contact_type  u8
 	last_advert   u32
