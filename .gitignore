@@ -7,6 +7,7 @@ echo
 echo_dbg
 /examples/echo
 /examples/echo_dbg
+/examples/purge_repeaters
 *.o
 *.so
 

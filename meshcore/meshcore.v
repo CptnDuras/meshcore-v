@@ -262,6 +262,74 @@ pub fn (mut mc MeshCore) add_contact(public_key_hex string, ctype u8, flags u8, 
 	return mc.wait_for_event(.ok, 5000) or { return error('timeout waiting for OK') }
 }
 
+// remove_contact drops one entry from the radio's contact book (CMD 15).
+// Firmware replies OK/ERROR.
+pub fn (mut mc MeshCore) remove_contact(public_key_hex string) !Event {
+	mc.conn.write_frame(encode_remove_contact(public_key_hex))!
+	return mc.wait_for_event(.ok, 5000) or { return error('timeout waiting for OK') }
+}
+
+// reset_path forgets a contact's learned route, so the next send to it (a
+// login, status request, or message) goes out as a flood instead of along a
+// possibly-stale path. Firmware replies OK, or ERROR if the contact is
+// unknown.
+pub fn (mut mc MeshCore) reset_path(public_key_hex string) !Event {
+	mc.conn.write_frame(encode_reset_path(public_key_hex))!
+	return mc.wait_for_event(.ok, 5000) or { return error('timeout waiting for OK') }
+}
+
+// login logs in to a contact (repeater or room server) as admin or guest.
+// Returns the immediate SENT ack (its suggested_timeout is how long to
+// expect the round trip to take); the actual result arrives later as a
+// .login_success or .login_fail event, matched by the contact's
+// pubkey_prefix attribute. Callers should wait for both event types.
+pub fn (mut mc MeshCore) login(public_key_hex string, password string) !Event {
+	mc.conn.write_frame(encode_send_login(public_key_hex, password))!
+	return mc.wait_for_event(.msg_sent, 5000) or { return error('timeout waiting for SENT') }
+}
+
+// status_req asks a logged-in contact for its live status (battery, noise
+// floor, packet counters, airtime). Returns the immediate SENT ack; the data
+// arrives later as a .status_response event, matched by pubkey_prefix.
+pub fn (mut mc MeshCore) status_req(public_key_hex string) !Event {
+	mc.conn.write_frame(encode_send_status_req(public_key_hex))!
+	return mc.wait_for_event(.msg_sent, 5000) or { return error('timeout waiting for SENT') }
+}
+
+// remote_cli runs a CLI command on a contact this radio is logged in to.
+// Returns the immediate SENT ack; the command's text output arrives later as
+// an ordinary .contact_msg_recv event (txt_type CLI_DATA), matched by the
+// contact's pubkey_prefix. prefix must be >= 6 bytes of its public key.
+pub fn (mut mc MeshCore) remote_cli(pubkey_prefix_hex string, text string) !Event {
+	prefix := hex_to_bytes(pubkey_prefix_hex)
+	if prefix.len < 6 {
+		return error('pubkey prefix must be >= 6 bytes')
+	}
+	mc.conn.write_frame(encode_remote_cli(prefix, text))!
+	return mc.wait_for_event(.msg_sent, 5000) or { return error('timeout waiting for SENT') }
+}
+
+// run_cli_command runs a CLI command on THIS radio (v14+ firmware), not a
+// remote node. Returns the command's text output directly.
+pub fn (mut mc MeshCore) run_cli_command(text string) !Event {
+	mc.conn.write_frame(encode_run_cli_command(text))!
+	return mc.wait_for_event(.cli_reply, 5000) or { return error('timeout waiting for CLI_REPLY') }
+}
+
+// get_batt_and_storage reads this radio's battery voltage and flash storage
+// usage.
+pub fn (mut mc MeshCore) get_batt_and_storage() !Event {
+	mc.conn.write_frame(encode_get_batt_and_storage())!
+	return mc.wait_for_event(.battery, 5000) or { return error('timeout waiting for BATT_AND_STORAGE') }
+}
+
+// reboot restarts this radio. The firmware does not reply before rebooting,
+// so the serial connection drops; this only writes the frame, and does not
+// wait for (or expect) a response.
+pub fn (mut mc MeshCore) reboot() ! {
+	mc.conn.write_frame(encode_reboot())!
+}
+
 // accept_contact is a convenience that auto-accepts a node from a NEW_CONTACT
 // (new_contact) event payload: it adds the contact using the advertised fields.
 pub fn (mut mc MeshCore) accept_contact(p Payload) !Event {

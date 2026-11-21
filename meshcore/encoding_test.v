@@ -188,3 +188,65 @@ fn test_encode_set_path_hash_mode() {
 		assert false
 	}
 }
+
+fn test_encode_remove_contact_layout() {
+	pk := '4b81424f7106' + '00'.repeat(26) // 32-byte key (12 hex + padding)
+	p := encode_remove_contact(pk)
+	assert p[0] == cmd_remove_contact // 15
+	assert p.len == 33
+	assert p[1..7] == [u8(0x4b), 0x81, 0x42, 0x4f, 0x71, 0x06]
+}
+
+fn test_encode_reset_path_layout() {
+	pk := '19e093d3475d' + '00'.repeat(26)
+	p := encode_reset_path(pk)
+	assert p[0] == cmd_reset_path // 13
+	assert p.len == 33
+	assert p[1..7] == [u8(0x19), 0xe0, 0x93, 0xd3, 0x47, 0x5d]
+}
+
+fn test_encode_send_login_layout() {
+	pk := '19e093d3475d' + '00'.repeat(26)
+	p := encode_send_login(pk, 'password')
+	assert p[0] == cmd_send_login // 26
+	assert p.len == 1 + 32 + 15 + 1 // cmd + key + padded password field + terminator
+	assert p[33..41] == 'password'.bytes()
+	// padded with NULs out to the 15-byte field, plus one more terminator byte
+	for i in 41 .. p.len {
+		assert p[i] == u8(0)
+	}
+}
+
+fn test_encode_send_status_req_layout() {
+	pk := '19e093d3475d' + '00'.repeat(26)
+	p := encode_send_status_req(pk)
+	assert p[0] == cmd_send_status_req // 27
+	assert p.len == 33
+}
+
+fn test_encode_run_cli_command_layout() {
+	p := encode_run_cli_command('get radio')
+	assert p[0] == cmd_run_cli_command // 66
+	assert p[1..] == 'get radio'.bytes()
+}
+
+fn test_encode_remote_cli_layout() {
+	prefix := [u8(0x19), 0xe0, 0x93, 0xd3, 0x47, 0x5d]
+	p := encode_remote_cli(prefix, 'get radio')
+	assert p[0] == cmd_send_txt_msg // 2
+	assert p[1] == txt_type_cli_data // 1
+	assert p[2] == u8(0) // attempt
+	// bytes 3..7 are the (zero) timestamp placeholder; prefix at 7..13
+	assert p[7..13] == prefix
+	assert p[13..] == 'get radio'.bytes()
+}
+
+fn test_encode_reboot_layout() {
+	p := encode_reboot()
+	assert p[0] == cmd_reboot // 19
+	assert p[1..] == 'reboot'.bytes()
+}
+
+fn test_encode_get_batt_and_storage_layout() {
+	assert encode_get_batt_and_storage() == [cmd_get_batt_and_storage] // 20
+}

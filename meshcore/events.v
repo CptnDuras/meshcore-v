@@ -30,6 +30,11 @@ pub enum EventType {
 	disabled
 	msg_sent
 	messages_waiting
+	// remote login/status (SEND_LOGIN, SEND_STATUS_REQ)
+	login_success
+	login_fail
+	status_response
+	cli_reply
 	// network / push
 	advertisement
 	path_update
@@ -101,6 +106,15 @@ pub mut:
 	// msg_sent
 	expected_ack      string
 	suggested_timeout u32
+	// login_success / login_fail (pubkey_prefix carries the contact's "from")
+	login_admin bool
+	login_perms u8
+	server_time u32
+	fw_level    u8
+	// battery (GET_BATT_AND_STORAGE reply)
+	batt_mv          u16
+	storage_used_kb  u32
+	storage_total_kb u32
 	// error
 	err_code u8
 	reason   string

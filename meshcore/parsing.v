@@ -9,8 +9,16 @@ pub const cmd_send_self_advert = u8(7)
 pub const cmd_set_advert_name = u8(8)
 pub const cmd_add_update_contact = u8(9)
 pub const cmd_sync_next_message = u8(10)
+pub const cmd_remove_contact = u8(15) // REMOVE_CONTACT: drop one entry from the radio's contact book
+pub const cmd_reset_path = u8(13) // RESET_PATH: forget a contact's learned route (next send floods)
+pub const cmd_reboot = u8(19) // REBOOT: reboot this radio (no reply; the connection drops)
+pub const cmd_get_batt_and_storage = u8(20) // GET_BATT_AND_STORAGE
+pub const cmd_send_login = u8(26) // SEND_LOGIN: log in to a repeater/room server as admin or guest
+pub const cmd_send_status_req = u8(27) // SEND_STATUS_REQ: ask a logged-in contact for its live status
+pub const cmd_run_cli_command = u8(66) // RUN_CLI_COMMAND (v14+): local CLI on this radio only
 pub const cmd_device_query = u8(22)
 pub const cmd_export_private_key = u8(23)
+pub const txt_type_cli_data = u8(1) // TXT_TYPE_CLI_DATA: a CLI command or reply sent as a text message
 pub const cmd_send_channel_data = u8(0x3E) // binary channel datagram (SEND_CHANNEL_DATA)
 pub const cmd_send_trace_path = u8(36) // trace a direct path hop by hop (SEND_TRACE_PATH)
 pub const cmd_set_path_hash_mode = u8(61) // how many bytes of each repeater's key go into the paths of packets this radio sends (SET_PATH_HASH_MODE)
@@ -33,6 +41,8 @@ pub const resp_disabled = u8(15) // feature compiled out of the firmware
 pub const resp_contact_msg_recv_v3 = u8(16)
 pub const resp_channel_msg_recv_v3 = u8(17)
 pub const resp_channel_data_recv = u8(0x1B) // inbound binary channel datagram
+pub const resp_batt_and_storage = u8(12) // reply to CMD_GET_BATT_AND_STORAGE
+pub const resp_cli_reply = u8(29) // v14+, reply to CMD_RUN_CLI_COMMAND
 
 // --- Push codes (radio -> app, unsolicited) ---
 pub const push_advert = u8(0x80)
@@ -43,6 +53,9 @@ pub const push_log_rx_data = u8(0x88) // every packet heard: snr*4, rssi, raw by
 pub const push_trace_data = u8(0x89) // a trace came back: the hashes it was sent along and the SNR each hop heard it with
 pub const push_new_advert = u8(0x8A) // unknown node advertised -> NEW_CONTACT
 pub const push_control_data = u8(0x8E) // a zero-hop control packet was heard: the SNR and RSSI it arrived with, then its payload
+pub const push_login_success = u8(0x85) // a CMD_SEND_LOGIN succeeded
+pub const push_login_fail = u8(0x86) // a CMD_SEND_LOGIN was refused
+pub const push_status_response = u8(0x87) // the status data asked for by CMD_SEND_STATUS_REQ
 
 // control payload types (high nibble of the first payload byte)
 pub const ctl_discover_req = u8(0x80)
@@ -144,6 +157,27 @@ pub fn parse_frame(b []u8) Event {
 		}
 		push_control_data {
 			return parse_control_data(b)
+		}
+		push_login_success {
+			return parse_login_result(b, true)
+		}
+		push_login_fail {
+			return parse_login_result(b, false)
+		}
+		push_status_response {
+			return parse_status_response(b)
+		}
+		resp_batt_and_storage {
+			return parse_batt_and_storage(b)
+		}
+		resp_cli_reply {
+			return Event{
+				typ:     .cli_reply
+				payload: Payload{
+					code: code
+					text: if b.len > 1 { b[1..].bytestr() } else { '' }
+				}
+			}
 		}
 		resp_private_key {
 			if b.len < 65 {
@@ -309,6 +343,84 @@ fn parse_sent(b []u8) Event {
 			code:              b[0]
 			expected_ack:      ack.hex()
 			suggested_timeout: timeout
+		}
+	}
+}
+
+// LOGIN_SUCCESS (0x85): perms(1) from(6) [server_time(4) [reserved(1) fw_level(1)]]
+// LOGIN_FAIL (0x86):    reserved(1) from(6)
+// perms bit 0 is the admin flag; server_time/fw_level are only present on
+// newer firmware, hence the length guards.
+fn parse_login_result(b []u8, ok bool) Event {
+	if b.len < 8 {
+		return Event{
+			typ:     .raw
+			payload: Payload{
+				code:    b[0]
+				raw_hex: b.hex()
+			}
+		}
+	}
+	from := b[2..8].hex()
+	mut attrs := map[string]string{}
+	attrs['pubkey_prefix'] = from
+	return Event{
+		typ:        if ok { EventType.login_success } else { EventType.login_fail }
+		payload:    Payload{
+			code:          b[0]
+			pubkey_prefix: from
+			login_admin:   ok && (b[1] & 1) != 0
+			login_perms:   if ok { b[1] } else { u8(0) }
+			server_time:   if ok && b.len >= 12 { le_u32(b, 8) } else { u32(0) }
+			fw_level:      if ok && b.len >= 14 { b[13] } else { u8(0) }
+		}
+		attributes: attrs
+	}
+}
+
+// STATUS_RESPONSE (0x87): reserved(1) from(6) data...
+fn parse_status_response(b []u8) Event {
+	if b.len < 8 {
+		return Event{
+			typ:     .raw
+			payload: Payload{
+				code:    b[0]
+				raw_hex: b.hex()
+			}
+		}
+	}
+	from := b[2..8].hex()
+	mut attrs := map[string]string{}
+	attrs['pubkey_prefix'] = from
+	return Event{
+		typ:        .status_response
+		payload:    Payload{
+			code:          b[0]
+			pubkey_prefix: from
+			data:          b[8..].clone()
+		}
+		attributes: attrs
+	}
+}
+
+// BATT_AND_STORAGE (12): millivolts(2) used_kb(4) total_kb(4)
+fn parse_batt_and_storage(b []u8) Event {
+	if b.len < 11 {
+		return Event{
+			typ:     .raw
+			payload: Payload{
+				code:    b[0]
+				raw_hex: b.hex()
+			}
+		}
+	}
+	return Event{
+		typ:     .battery
+		payload: Payload{
+			code:             b[0]
+			batt_mv:          le_u16(b, 1)
+			storage_used_kb:  le_u32(b, 3)
+			storage_total_kb: le_u32(b, 7)
 		}
 	}
 }

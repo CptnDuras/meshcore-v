@@ -70,9 +70,18 @@ pub fn (mut c SerialConnection) write_frame(payload []u8) ! {
 	if out.len == 0 {
 		return
 	}
-	n := C.write(c.fd, out.data, usize(out.len))
-	if n != out.len {
-		return error('short serial write ${n}/${out.len}')
+	c.write_raw(out)!
+}
+
+// write_raw writes bytes with no framing applied — used directly by
+// transports (such as the KISS modem client) that frame their own way.
+pub fn (mut c SerialConnection) write_raw(data []u8) ! {
+	if data.len == 0 {
+		return
+	}
+	n := C.write(c.fd, data.data, usize(data.len))
+	if n != data.len {
+		return error('short serial write ${n}/${data.len}')
 	}
 }
 

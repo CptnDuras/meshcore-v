@@ -25,6 +25,17 @@ fn put_u16_le(mut p []u8, v u16) {
 	p << u8((v >> 8) & 0xFF)
 }
 
+// pad_key32 decodes a hex public key to exactly 32 bytes, padding with zeros
+// (or truncating) as needed. Every command that names a contact by its full
+// key uses this.
+fn pad_key32(public_key_hex string) []u8 {
+	mut pk := hex_to_bytes(public_key_hex)
+	for pk.len < 32 {
+		pk << u8(0)
+	}
+	return pk[..32]
+}
+
 // CMD_APP_START: [1, app_ver=3, 6 reserved (0x20), app_name...]
 pub fn encode_app_start(app_name string) []u8 {
 	mut p := []u8{}
@@ -58,12 +69,7 @@ pub fn encode_get_contacts(since u32) []u8 {
 pub fn encode_add_update_contact(public_key_hex string, ctype u8, flags u8, adv_name string, last_advert u32, adv_lat i32, adv_lon i32) []u8 {
 	mut p := []u8{}
 	p << cmd_add_update_contact
-	// public key: exactly 32 bytes (pad/truncate)
-	mut pk := hex_to_bytes(public_key_hex)
-	for pk.len < 32 {
-		pk << u8(0)
-	}
-	p << pk[..32]
+	p << pad_key32(public_key_hex)
 	p << ctype
 	p << flags
 	p << u8(0) // out_path_len = 0 (flood; no path bytes follow)
@@ -80,6 +86,104 @@ pub fn encode_add_update_contact(public_key_hex string, ctype u8, flags u8, adv_
 	put_i32_le(mut p, adv_lat)
 	put_i32_le(mut p, adv_lon)
 	return p
+}
+
+// CMD_REMOVE_CONTACT (15): drop one entry from the radio's contact book.
+// Layout: 0x0F public_key(32). Firmware replies OK/ERROR.
+pub fn encode_remove_contact(public_key_hex string) []u8 {
+	mut p := []u8{}
+	p << cmd_remove_contact
+	p << pad_key32(public_key_hex)
+	return p
+}
+
+// CMD_RESET_PATH (13): forget the learned route to a contact, so the next
+// send to it goes out as a flood instead of along a (possibly stale) path.
+// Layout: 0x0D public_key(32). Firmware replies OK, or ERROR if the contact
+// is unknown.
+pub fn encode_reset_path(public_key_hex string) []u8 {
+	mut p := []u8{}
+	p << cmd_reset_path
+	p << pad_key32(public_key_hex)
+	return p
+}
+
+// CMD_SEND_LOGIN (26): log in to a repeater/room server as admin or guest.
+// Layout: 0x1A public_key(32) password (NUL-padded to 15 bytes, plus one more
+// NUL terminator byte — matches the reference web client's field width;
+// the firmware itself just reads a NUL-terminated C string). Firmware
+// replies SENT immediately (an ack tag + suggested timeout, decoded as
+// .msg_sent); the actual LOGIN_SUCCESS/LOGIN_FAIL arrives later as a push,
+// matched by the contact's 6-byte pubkey_prefix.
+pub fn encode_send_login(public_key_hex string, password string) []u8 {
+	mut p := []u8{}
+	p << cmd_send_login
+	p << pad_key32(public_key_hex)
+	mut pw := password.bytes()
+	if pw.len > 15 {
+		pw = pw[..15]
+	}
+	p << pw
+	for _ in pw.len .. 15 {
+		p << u8(0)
+	}
+	p << u8(0)
+	return p
+}
+
+// CMD_SEND_STATUS_REQ (27): ask a logged-in contact for its live status
+// (battery, noise floor, packet counters, airtime). Layout:
+// 0x1B public_key(32). Firmware replies SENT immediately; the data arrives
+// later as a .status_response push, matched by the contact's pubkey_prefix.
+pub fn encode_send_status_req(public_key_hex string) []u8 {
+	mut p := []u8{}
+	p << cmd_send_status_req
+	p << pad_key32(public_key_hex)
+	return p
+}
+
+// CMD_RUN_CLI_COMMAND (66, v14+): run a CLI command on THIS radio (the one
+// meshcore-v is connected to over serial), not a remote node. Firmware
+// replies CLI_REPLY with the command's text output. For a remote node's
+// CLI, log in first and use encode_remote_cli instead.
+pub fn encode_run_cli_command(text string) []u8 {
+	mut p := []u8{}
+	p << cmd_run_cli_command
+	p << text.bytes()
+	return p
+}
+
+// encode_remote_cli sends a CLI command to a contact this radio is logged in
+// to, reusing CMD_SEND_TXT_MSG (2) with txt_type=CLI_DATA (no delivery ack
+// expected; the reply comes back as an ordinary text message). prefix must
+// be >= 6 bytes of the contact's public key.
+pub fn encode_remote_cli(prefix []u8, text string) []u8 {
+	mut p := []u8{}
+	p << cmd_send_txt_msg
+	p << txt_type_cli_data
+	p << u8(0) // attempt
+	put_u32_le(mut p, u32(0)) // firmware substitutes its own RTC-unique timestamp for CLI frames
+	for i in 0 .. 6 {
+		p << if i < prefix.len { prefix[i] } else { u8(0) }
+	}
+	p << text.bytes()
+	return p
+}
+
+// CMD_REBOOT (19): reboot this radio. The literal ASCII "reboot" payload
+// guards against an accidental call. The firmware reboots without replying,
+// so the serial connection drops; callers should expect that, not a timeout.
+pub fn encode_reboot() []u8 {
+	mut p := []u8{}
+	p << cmd_reboot
+	p << 'reboot'.bytes()
+	return p
+}
+
+// CMD_GET_BATT_AND_STORAGE (20): no payload. Firmware replies
+// RESP_CODE_BATT_AND_STORAGE (battery mV, storage used/total KB).
+pub fn encode_get_batt_and_storage() []u8 {
+	return [cmd_get_batt_and_storage]
 }
 
 // CMD_SEND_SELF_ADVERT: [7] for zero-hop, [7, 1] for flood.

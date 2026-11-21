@@ -417,6 +417,54 @@ fn test_parse_control_data_other_is_raw() {
 	assert parse_frame(hx('8e16a600' + '92f60d0c0b0a')).typ == .raw
 }
 
+fn test_parse_login_success() {
+	// code(0x85) perms(0x01=admin) from(6) server_time(4 LE) reserved(1) fw_level(1)
+	b := hx('85' + '01' + '19e093d3475d' + '6afe9790' + '03' + '02')
+	ev := parse_frame(b)
+	assert ev.typ == .login_success
+	assert ev.payload.pubkey_prefix == '19e093d3475d'
+	assert ev.payload.login_admin == true
+	assert ev.payload.login_perms == u8(1)
+	assert ev.payload.server_time == u32(0x9097fe6a) // little-endian read of 6a fe 97 90
+	assert ev.payload.fw_level == u8(2)
+	assert ev.attributes['pubkey_prefix'] == '19e093d3475d'
+}
+
+fn test_parse_login_fail() {
+	b := hx('86' + '00' + '19e093d3475d')
+	ev := parse_frame(b)
+	assert ev.typ == .login_fail
+	assert ev.payload.pubkey_prefix == '19e093d3475d'
+	assert ev.payload.login_admin == false
+}
+
+fn test_parse_status_response() {
+	// code(0x87) reserved(1) from(6) data...
+	b := hx('87' + '00' + '19e093d3475d' + '0102')
+	ev := parse_frame(b)
+	assert ev.typ == .status_response
+	assert ev.payload.pubkey_prefix == '19e093d3475d'
+	assert ev.payload.data == [u8(1), 2]
+}
+
+fn test_parse_batt_and_storage() {
+	// code(12) millivolts(2 LE) used_kb(4 LE) total_kb(4 LE)
+	b := hx('0c' + 'bc0f' + '01000000' + '02000000')
+	ev := parse_frame(b)
+	assert ev.typ == .battery
+	assert ev.payload.batt_mv == u16(0x0fbc)
+	assert ev.payload.storage_used_kb == u32(1)
+	assert ev.payload.storage_total_kb == u32(2)
+}
+
+fn test_parse_cli_reply() {
+	mut b := hx('1d') // code 29
+	b << '> 910.5250244,62.5,7,5'.bytes()
+	ev := parse_frame(b)
+	assert ev.typ == .cli_reply
+	assert ev.payload.text == '> 910.5250244,62.5,7,5'
+}
+
 fn test_parse_device_info_path_hash_mode() {
 	mut b := []u8{len: 82, init: 0}
 	b[0] = u8(13)
